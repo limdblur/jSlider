@@ -1,0 +1,38 @@
+html {
+  height: 100%;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch; }
+
+body {
+  height: 100%;
+  overflow: hidden; }
+
+html, body, main, section {
+  margin: 0;
+  padding: 0; }
+
+#container[data-orientation="vertical"] {
+  overflow-y: visible;
+  height: 100%; }
+  #container[data-orientation="vertical"] .page {
+    height: 100%; }
+
+#container[data-orientation="horizontal"] {
+  overflow-x: visible;
+  width: 100%; }
+  #container[data-orientation="horizontal"] .page {
+    width: 100%; }
+
+#container .page {
+  box-sizing: border-box; }
+
+#container .page {
+  text-align: center;
+  font-size: 30px;
+  font-weight: bold;
+  color: #363636;
+  border: 3px solid brown;
+  padding-top: 200px;
+  color: #666; }
