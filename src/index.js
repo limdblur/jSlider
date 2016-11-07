@@ -3,7 +3,7 @@ class Slider {
         this.element = binder; //容器对象
 
         this.autoSlide = false; //自动轮播
-        this.onPageStop = null; //一页进行到底时触发事件
+        this.onSlideOver = null; //一页进行到底时触发事件
         this.orientation = 'vertical'; // horizontal || verical
         if(this.orientation != 'vertical' && this.orientation !== 'horizontal') {
             throw new Error('must specify orientation of the slider');
@@ -219,10 +219,10 @@ class Slider {
         return Math.round(Math.abs(this.position)/this.pageHeight);
     }
     //一屏滚动完成触发
-    setOnPageStop(page){
-        this.onPageStop &&
-        typeof this.onPageStop == 'function' &&
-        this.onPageStop(page);
+    setOnSlideOver(pageIndex){
+        this.onSlideOver &&
+        typeof this.onSlideOver == 'function' &&
+        this.onSlideOver(pageIndex);
     }
     //停止自动滚动
     stopAutoSlide(){}
