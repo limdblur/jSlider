@@ -22,15 +22,15 @@ class Slider {
             this.pageSize = this.parent.offsetWidth;
         }
 
-        this.thresholdTime = 300; //手指最大停留时间，超过此时间，则认定脱离跟随状态
+        this.thresholdStayTime = 300; //手指最大停留时间，超过此时间，则认定脱离跟随状态
         this.thresholdVelocity = 10; //最大速度，超过此速度，始终惯性翻屏
 
 
-        this.responder();
+        this._responder();
     }
 
     //初始化响应参数
-    responderInit(){
+    _responderInit(){
         this.response = {
             inResponse: false,  //是否正在响应状态
             position: null, //响应时的位置
@@ -39,8 +39,8 @@ class Slider {
     }
 
     //响应跟随系统
-    responder(){
-        this.responderInit();
+    _responder(){
+        this._responderInit();
 
         //检测当前页面所处的模式，鼠标还是触摸
         let touchExist = 'ontouchstart' in window;
@@ -68,7 +68,7 @@ class Slider {
                 let offsetPosition = tmpMovePosition - this.response.position;
                 this.response.position = tmpMovePosition;
                 this.response.responseTime = Date.now();
-                this.follow(offsetPosition);
+                this._follow(offsetPosition);
             }
         };
         let end = (e) => {
@@ -77,20 +77,22 @@ class Slider {
                 let velocity = tmpEndPosition - this.response.position;
                 //停留事件代表手指停留在屏幕静止不动的时间
                 let stayTime = Date.now() - this.response.responseTime;
-                this.responderInit();
+                this._responderInit();
 
-
-                if(stayTime < this.thresholdTime){
-                    //小于300毫秒，则按照既定逻辑
-
+                //核心运动逻辑在这里
+                if(stayTime < this.thresholdStayTime){
+                    //小于停留时间阈值(thresholdTime)，则按照既定逻辑
                     if(velocity >= this.thresholdVelocity){
-                        //如果速度>=10，直接触发翻屏操作
+                        //如果速度>=thresholdVelocity，直接触发翻屏操作
+                        this._slideOver(velocity);
                     } else {
-                        //如果速度<=10，则严格按照物理学规律
+                        //如果速度<=thresholdVelocity，有可能产生回弹
+                        this._rebound(velocity);
                     }
-
                 } else {
-                    //大于300毫秒，认定为停留过长，直接按照惯性回弹处理
+                    //大于停留时间阈值(thresholdTime)
+                    //则认为停留过长（即按着屏幕不动），直接按照惯性回弹处理
+                    this._rebound();
                 }
 
             }
@@ -141,7 +143,7 @@ class Slider {
     }
 
     //执行最终的位移渲染
-    render(newPosition){
+    _render(newPosition){
         if(newPosition == this.position){
             return ;
         }
@@ -162,8 +164,8 @@ class Slider {
         this.element.style[styleName] = style;
     }
 
-    //跟随
-    follow(offsetPosition){
+    //跟随(也就是手指或鼠标拖动)
+    _follow(offsetPosition){
         //跟随不切换页，先求边界页
         let boundary = null;
         if(this.currentPage == 1){
@@ -189,11 +191,29 @@ class Slider {
             newPosition = rangePosition.end;
         }
 
-        this.render(newPosition);
+        this._render(newPosition);
     }
 
-    //回弹
-    rebound(){}
+    //根据位移公式计算加速度
+    //v0: 初始速度
+    //s : 总位移
+    //t : 消耗的总时间，这里是帧数，约定30帧执行完
+    _getAcceleration(v0, s, t = 30){
+        //公式: v0*t + a*t*t/2 = s
+        return (s - v0*t)*2/(t*t);
+    }
+
+    //特定速度下回弹
+    _rebound(withVelocity = 0){
+        let willReboundPage = this._willReboundPage();
+        //加速度要用
+    }
+
+    //带初始速度滑到底
+    _slideOver(velocity){
+
+    }
+
     //计算将要回弹进入的页面
     _willReboundPage(){
         return Math.round(Math.abs(this.position)/this.pageHeight);
