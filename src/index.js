@@ -10,6 +10,7 @@ class Slider {
         }
 
         this.loop = false; //是否允许循环滚动
+        this.isAnimating = false;
 
         this.position = 0;
         this.currentPage = 1; //序号从1开始
@@ -106,6 +107,37 @@ class Slider {
         doc.addEventListener(moveEvent, move);
         doc.addEventListener(endEvent, end);
         doc.addEventListener(cancelEvent, cancel);
+    }
+
+    //动画逻辑
+    _animate(frame){
+        if(!frame || typeof frame != 'function'){
+            return ;
+        }
+
+        if(this.isAnimating === false){
+            return ;
+        }
+
+        let requestFrame =
+            window.requestAnimationFrame ||
+            window.webkitRequestAnimationFrame ||
+            function(frame){
+                return window.setTimeout(frame, 1000/60);
+            };
+
+        requestFrame(frame);
+        this._animate(frame);
+    }
+
+    //开始执行动画
+    _startAnimate(){
+        this.isAnimating = true;
+    }
+
+    //中断执行动画
+    _stopAnimate(){
+        this.isAnimating = false;
     }
 
     //执行最终的位移渲染
