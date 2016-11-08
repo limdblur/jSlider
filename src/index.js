@@ -22,8 +22,7 @@ class Slider {
             this.pageSize = this.parent.offsetWidth;
         }
 
-        this.thresholdStayTime = 150; //手指最大停留时间，超过此时间，则认定脱离跟随状态
-        this.thresholdVelocity = 10; //最大速度，超过此速度，始终惯性翻屏
+        this._thresholdVelocity = 10; //最大速度，超过此速度，始终惯性翻屏
 
 
         this._responder();
@@ -34,7 +33,7 @@ class Slider {
         this.response = {
             inResponse: false,  //是否正在响应状态
             position: null, //响应时的位置
-            responseTime: null, //上次响应时的事件，包括start、move
+            // responseTime: null, //上次响应时的事件，包括start、move
             velocity: 0 //移动速度
         };
     }
@@ -60,6 +59,9 @@ class Slider {
                 this.response.inResponse = true;
                 this.response.position = getTouchPosition(e);
                 this.response.responseTime = Date.now();
+
+                //一旦开始响应，将要移除上一次的动画执行时
+                this._stopAnimation();
             }
         };
         let move = (e)=>{
@@ -68,34 +70,22 @@ class Slider {
                 let tmpMovePosition = getTouchPosition(e);
                 let offsetPosition = tmpMovePosition - this.response.position;
                 this.response.position = tmpMovePosition;
-                this.response.responseTime = Date.now();
                 this.response.velocity = offsetPosition;
+
                 this._follow(offsetPosition);
             }
         };
         let end = (e) => {
             if(this.response.inResponse){
-                let tmpEndPosition = getTouchPosition(e);
                 //停留事件代表手指停留在屏幕静止不动的时间
-                let stayTime = Date.now() - this.response.responseTime;
                 let lastVelocity = this.response.velocity;
-
                 this._responderInit();
-
                 //重要: 核心运动逻辑在这里
-                if(stayTime < this.thresholdStayTime){
-                    //小于停留时间阈值(thresholdStayTime)，则按照既定逻辑
-                    if(Math.abs(lastVelocity) >= this.thresholdVelocity){
-                        //如果速度>=thresholdVelocity，直接触发翻屏操作
-                        this._rebound(lastVelocity, true);
-                    } else {
-                        //如果速度<=thresholdVelocity，有可能产生回弹
-                        this._rebound();
-                    }
+                if(Math.abs(lastVelocity) > this._thresholdVelocity){
+                    this._rebound(lastVelocity, true);
                 } else {
-                    //大于停留时间阈值(thresholdStayTime)
-                    //则认为停留过长（即按着屏幕不动），直接按照惯性回弹处理
-                    this._rebound();
+                    //认为停留过长（按着屏幕不动或者滑动过慢），直接按照惯性回弹处理
+                    this._rebound(0, false);
                 }
 
             }
