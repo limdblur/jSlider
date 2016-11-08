@@ -57,13 +57,14 @@
 	        this.element = binder; //容器对象
 
 	        this.autoSlide = false; //自动轮播
-	        this.onPageStop = null; //一页进行到底时触发事件
+	        this.onSlideOver = null; //一页进行到底时触发事件
 	        this.orientation = 'vertical'; // horizontal || verical
 	        if (this.orientation != 'vertical' && this.orientation !== 'horizontal') {
 	            throw new Error('must specify orientation of the slider');
 	        }
 
 	        this.loop = false; //是否允许循环滚动
+	        this.isAnimating = false;
 
 	        this.position = 0;
 	        this.currentPage = 1; //序号从1开始
@@ -75,33 +76,35 @@
 	            this.pageSize = this.parent.offsetWidth;
 	        }
 
-	        this.thresholdTime = 300; //手指最大停留时间，超过此时间，则认定脱离跟随状态
+	        this.thresholdStayTime = 300; //手指最大停留时间，超过此时间，则认定脱离跟随状态
 	        this.thresholdVelocity = 10; //最大速度，超过此速度，始终惯性翻屏
 
 
-	        this.responder();
+	        this._responder();
 	    }
 
 	    //初始化响应参数
 
 
 	    _createClass(Slider, [{
-	        key: 'responderInit',
-	        value: function responderInit() {
+	        key: '_responderInit',
+	        value: function _responderInit() {
 	            this.response = {
 	                inResponse: false, //是否正在响应状态
 	                position: null, //响应时的位置
-	                responseTime: null };
+	                responseTime: null, //上次响应时的事件，包括start、move
+	                velocity: 0 //移动速度
+	            };
 	        }
 
 	        //响应跟随系统
 
 	    }, {
-	        key: 'responder',
-	        value: function responder() {
+	        key: '_responder',
+	        value: function _responder() {
 	            var _this = this;
 
-	            this.responderInit();
+	            this._responderInit();
 
 	            //检测当前页面所处的模式，鼠标还是触摸
 	            var touchExist = 'ontouchstart' in window;
@@ -129,28 +132,32 @@
 	                    var offsetPosition = tmpMovePosition - _this.response.position;
 	                    _this.response.position = tmpMovePosition;
 	                    _this.response.responseTime = Date.now();
-	                    _this.follow(offsetPosition);
+	                    _this.response.velocity = offsetPosition;
+	                    _this._follow(offsetPosition);
 	                }
 	            };
 	            var end = function end(e) {
 	                if (_this.response.inResponse) {
 	                    var tmpEndPosition = getTouchPosition(e);
-	                    var velocity = tmpEndPosition - _this.response.position;
 	                    //停留事件代表手指停留在屏幕静止不动的时间
 	                    var stayTime = Date.now() - _this.response.responseTime;
-	                    _this.responderInit();
+	                    _this._responderInit();
 
-	                    if (stayTime < _this.thresholdTime) {
-	                        //小于300毫秒，则按照既定逻辑
-
-	                        if (velocity >= _this.thresholdVelocity) {
-	                            //如果速度>=10，直接触发翻屏操作
+	                    //核心运动逻辑在这里
+	                    if (stayTime < _this.thresholdStayTime) {
+	                        //小于停留时间阈值(thresholdStayTime)，则按照既定逻辑
+	                        if (_this.response.velocity >= _this.thresholdVelocity) {
+	                            //如果速度>=thresholdVelocity，直接触发翻屏操作
+	                            _this._slideOver(_this.response.velocity);
 	                        } else {
-	                                //如果速度<=10，则严格按照物理学规律
-	                            }
-	                    } else {
-	                            //大于300毫秒，认定为停留过长，直接按照惯性回弹处理
+	                            //如果速度<=thresholdVelocity，有可能产生回弹
+	                            _this._rebound();
 	                        }
+	                    } else {
+	                        //大于停留时间阈值(thresholdStayTime)
+	                        //则认为停留过长（即按着屏幕不动），直接按照惯性回弹处理
+	                        _this._rebound();
+	                    }
 	                }
 	            };
 	            var cancel = function cancel(e) {
@@ -169,11 +176,53 @@
 	            doc.addEventListener(cancelEvent, cancel);
 	        }
 
+	        //动画逻辑
+
+	    }, {
+	        key: '_animate',
+	        value: function _animate(frame) {
+	            var _this2 = this;
+
+	            if (!frame || typeof frame != 'function') {
+	                return;
+	            }
+
+	            if (this.isAnimating === false) {
+	                return;
+	            }
+
+	            var requestFrame = window.requestAnimationFrame || window.webkitRequestAnimationFrame || function (frame) {
+	                return window.setTimeout(frame, 1000 / 60);
+	            };
+
+	            requestFrame(function () {
+	                frame();
+	                _this2._animate(frame);
+	            });
+	        }
+
+	        //开始执行动画
+
+	    }, {
+	        key: '_startAnimation',
+	        value: function _startAnimation(frame) {
+	            this.isAnimating = true;
+	            this._animate(frame);
+	        }
+
+	        //中断执行动画
+
+	    }, {
+	        key: '_stopAnimation',
+	        value: function _stopAnimation() {
+	            this.isAnimating = false;
+	        }
+
 	        //执行最终的位移渲染
 
 	    }, {
-	        key: 'render',
-	        value: function render(newPosition) {
+	        key: '_render',
+	        value: function _render(newPosition) {
 	            if (newPosition == this.position) {
 	                return;
 	            }
@@ -194,16 +243,16 @@
 	            this.element.style[styleName] = style;
 	        }
 
-	        //跟随
+	        //跟随(也就是手指或鼠标拖动)
 
 	    }, {
-	        key: 'follow',
-	        value: function follow(offsetPosition) {
+	        key: '_follow',
+	        value: function _follow(offsetPosition) {
 	            //跟随不切换页，先求边界页
 	            var boundary = null;
 	            if (this.currentPage == 1) {
 	                boundary = [1, this.totalPage >= 2 ? 2 : 1];
-	            } else if (this.currentPage == totalPage) {
+	            } else if (this.currentPage == this.totalPage) {
 	                // boundary = [this.totalPage >= 2 ? this.totalPage - 1 : this.totalPage ,this.totalPage];
 	                boundary = [this.totalPage - 1, this.totalPage];
 	            } else {
@@ -224,14 +273,74 @@
 	                newPosition = rangePosition.end;
 	            }
 
-	            this.render(newPosition);
+	            this._render(newPosition);
 	        }
 
-	        //回弹
+	        //根据位移公式计算加速度
+	        //v : 初始速度
+	        //s : 总位移
+	        //t : 消耗的总时间，这里是帧数，约定30帧(大约半秒)执行完
 
 	    }, {
-	        key: 'rebound',
-	        value: function rebound() {}
+	        key: '_getAcceleration',
+	        value: function _getAcceleration(v, s) {
+	            var t = arguments.length <= 2 || arguments[2] === undefined ? 30 : arguments[2];
+
+	            //公式: v*t + a*t*t/2 = s
+	            return (s - v * t) * 2 / (t * t);
+	        }
+
+	        //特定速度下回弹
+
+	    }, {
+	        key: '_rebound',
+	        value: function _rebound() {
+	            var _this3 = this;
+
+	            var withVelocity = arguments.length <= 0 || arguments[0] === undefined ? 0 : arguments[0];
+
+	            var willReboundPage = this._willReboundPage();
+	            var offset = this.position / this.pageSize;
+
+	            //计算位移
+	            var displayment = (Math.round(offset) - offset) * this.pageSize;
+	            //位移为0，说明无需回弹
+	            if (displayment == 0) {
+	                return 0;
+	            }
+	            //计算回弹加速度，加速度方向决定了回弹方向
+	            var velocity = 0,
+	                durationFrames = 15;
+	            var acceleration = this._getAcceleration(velocity, displayment, durationFrames);
+
+	            //回弹范围
+	            var range = [Math.floor(offset) * this.pageSize, Math.ceil(offset) * this.pageSize];
+
+	            //执行回弹动画
+	            this._startAnimation(function () {
+	                velocity += acceleration;
+	                var newPosition = _this3.position + velocity;
+	                if (newPosition <= range[0] || newPosition >= range[1]) {
+	                    if (newPosition <= range[0]) {
+	                        newPosition = range[0];
+	                    }
+	                    if (newPosition >= range[1]) {
+	                        newPosition = range[1];
+	                    }
+	                    _this3._stopAnimation();
+	                    _this3.currentPage = parseInt(Math.abs(newPosition / _this3.pageSize)) + 1;
+	                    _this3._setOnSlideOver(_this3.currentPage);
+	                }
+	                _this3._render(newPosition);
+	            });
+	        }
+
+	        //带初始速度滑到底
+
+	    }, {
+	        key: '_slideOver',
+	        value: function _slideOver(velocity) {}
+
 	        //计算将要回弹进入的页面
 
 	    }, {
@@ -242,9 +351,9 @@
 	        //一屏滚动完成触发
 
 	    }, {
-	        key: 'setOnPageStop',
-	        value: function setOnPageStop(page) {
-	            this.onPageStop && typeof this.onPageStop == 'function' && this.onPageStop(page);
+	        key: '_setOnSlideOver',
+	        value: function _setOnSlideOver(pageIndex) {
+	            this.onSlideOver && typeof this.onSlideOver == 'function' && this.onSlideOver(pageIndex);
 	        }
 	        //停止自动滚动
 

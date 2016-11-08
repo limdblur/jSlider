@@ -35,6 +35,7 @@ class Slider {
             inResponse: false,  //是否正在响应状态
             position: null, //响应时的位置
             responseTime: null, //上次响应时的事件，包括start、move
+            velocity: 0 //移动速度
         };
     }
 
@@ -68,29 +69,30 @@ class Slider {
                 let offsetPosition = tmpMovePosition - this.response.position;
                 this.response.position = tmpMovePosition;
                 this.response.responseTime = Date.now();
+                this.response.velocity = offsetPosition;
                 this._follow(offsetPosition);
             }
         };
         let end = (e) => {
             if(this.response.inResponse){
                 let tmpEndPosition = getTouchPosition(e);
-                let velocity = tmpEndPosition - this.response.position;
                 //停留事件代表手指停留在屏幕静止不动的时间
                 let stayTime = Date.now() - this.response.responseTime;
                 this._responderInit();
 
+
                 //核心运动逻辑在这里
                 if(stayTime < this.thresholdStayTime){
-                    //小于停留时间阈值(thresholdTime)，则按照既定逻辑
-                    if(velocity >= this.thresholdVelocity){
+                    //小于停留时间阈值(thresholdStayTime)，则按照既定逻辑
+                    if(this.response.velocity >= this.thresholdVelocity){
                         //如果速度>=thresholdVelocity，直接触发翻屏操作
-                        this._slideOver(velocity);
+                        this._slideOver(this.response.velocity);
                     } else {
                         //如果速度<=thresholdVelocity，有可能产生回弹
-                        this._rebound(velocity);
+                        this._rebound();
                     }
                 } else {
-                    //大于停留时间阈值(thresholdTime)
+                    //大于停留时间阈值(thresholdStayTime)
                     //则认为停留过长（即按着屏幕不动），直接按照惯性回弹处理
                     this._rebound();
                 }
@@ -128,17 +130,20 @@ class Slider {
                 return window.setTimeout(frame, 1000/60);
             };
 
-        requestFrame(frame);
-        this._animate(frame);
+        requestFrame(()=>{
+            frame();
+            this._animate(frame);
+        });
     }
 
     //开始执行动画
-    _startAnimate(){
+    _startAnimation(frame){
         this.isAnimating = true;
+        this._animate(frame);
     }
 
     //中断执行动画
-    _stopAnimate(){
+    _stopAnimation(){
         this.isAnimating = false;
     }
 
@@ -170,7 +175,7 @@ class Slider {
         let boundary = null;
         if(this.currentPage == 1){
             boundary = [1, this.totalPage >= 2 ? 2 : 1];
-        } else if(this.currentPage == totalPage){
+        } else if(this.currentPage == this.totalPage){
             // boundary = [this.totalPage >= 2 ? this.totalPage - 1 : this.totalPage ,this.totalPage];
             boundary = [this.totalPage - 1, this.totalPage];
         } else {
@@ -195,18 +200,53 @@ class Slider {
     }
 
     //根据位移公式计算加速度
-    //v0: 初始速度
+    //v : 初始速度
     //s : 总位移
-    //t : 消耗的总时间，这里是帧数，约定30帧执行完
-    _getAcceleration(v0, s, t = 30){
-        //公式: v0*t + a*t*t/2 = s
-        return (s - v0*t)*2/(t*t);
+    //t : 消耗的总时间，这里是帧数，约定30帧(大约半秒)执行完
+    _getAcceleration(v, s, t = 30){
+        //公式: v*t + a*t*t/2 = s
+        return ( s - v * t ) * 2 / ( t * t );
     }
 
     //特定速度下回弹
     _rebound(withVelocity = 0){
         let willReboundPage = this._willReboundPage();
-        //加速度要用
+        let offset = this.position/this.pageSize;
+
+        //计算位移
+        let displayment = (Math.round(offset) - offset)*this.pageSize;
+        //位移为0，说明无需回弹
+        if(displayment == 0) {
+            return 0;
+        }
+        //计算回弹加速度，加速度方向决定了回弹方向
+        let velocity = 0, durationFrames = 15;
+        let acceleration = this._getAcceleration(velocity, displayment, durationFrames);
+
+        //回弹范围
+        let range = [
+            Math.floor(offset)*this.pageSize,
+            Math.ceil(offset)*this.pageSize
+        ];
+
+        //执行回弹动画
+        this._startAnimation(()=>{
+            velocity += acceleration;
+            let newPosition = this.position + velocity;
+            if(newPosition <= range[0] || newPosition >= range[1]){
+                if(newPosition <= range[0]) {
+                    newPosition = range[0];
+                }
+                if(newPosition >= range[1]){
+                    newPosition = range[1];
+                }
+                this._stopAnimation();
+                this.currentPage = parseInt(Math.abs(newPosition/this.pageSize)) + 1;
+                this._setOnSlideOver(this.currentPage);
+            }
+            this._render(newPosition);
+        });
+
     }
 
     //带初始速度滑到底
@@ -219,7 +259,7 @@ class Slider {
         return Math.round(Math.abs(this.position)/this.pageHeight);
     }
     //一屏滚动完成触发
-    setOnSlideOver(pageIndex){
+    _setOnSlideOver(pageIndex){
         this.onSlideOver &&
         typeof this.onSlideOver == 'function' &&
         this.onSlideOver(pageIndex);
