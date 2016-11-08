@@ -30,7 +30,7 @@ var Slider = function () {
             this.pageSize = this.parent.offsetWidth;
         }
 
-        this.thresholdStayTime = 300; //手指最大停留时间，超过此时间，则认定脱离跟随状态
+        this.thresholdStayTime = 150; //手指最大停留时间，超过此时间，则认定脱离跟随状态
         this.thresholdVelocity = 10; //最大速度，超过此速度，始终惯性翻屏
 
 
@@ -95,14 +95,16 @@ var Slider = function () {
                     var tmpEndPosition = getTouchPosition(e);
                     //停留事件代表手指停留在屏幕静止不动的时间
                     var stayTime = Date.now() - _this.response.responseTime;
+                    var lastVelocity = _this.response.velocity;
+
                     _this._responderInit();
 
-                    //核心运动逻辑在这里
+                    //重要: 核心运动逻辑在这里
                     if (stayTime < _this.thresholdStayTime) {
                         //小于停留时间阈值(thresholdStayTime)，则按照既定逻辑
-                        if (_this.response.velocity >= _this.thresholdVelocity) {
+                        if (Math.abs(lastVelocity) >= _this.thresholdVelocity) {
                             //如果速度>=thresholdVelocity，直接触发翻屏操作
-                            _this._slideOver(_this.response.velocity);
+                            _this._rebound(lastVelocity, true);
                         } else {
                             //如果速度<=thresholdVelocity，有可能产生回弹
                             _this._rebound();
@@ -245,30 +247,37 @@ var Slider = function () {
         }
 
         //特定速度下回弹
+        //direct: bool 是否直接到底（也就是直接翻页）
 
     }, {
         key: '_rebound',
         value: function _rebound() {
             var _this3 = this;
 
-            var withVelocity = arguments.length <= 0 || arguments[0] === undefined ? 0 : arguments[0];
+            var velocity = arguments.length <= 0 || arguments[0] === undefined ? 0 : arguments[0];
+            var direct = arguments.length <= 1 || arguments[1] === undefined ? false : arguments[1];
 
-            var willReboundPage = this._willReboundPage();
-            var offset = this.position / this.pageSize;
-
+            //当前位置比例
+            var ratio = this.position / this.pageSize;
+            //回弹范围
+            var range = [Math.floor(ratio) * this.pageSize, Math.ceil(ratio) * this.pageSize];
             //计算位移
-            var displayment = (Math.round(offset) - offset) * this.pageSize;
+            var displayment = (Math.round(ratio) - ratio) * this.pageSize;
+            if (direct == true) {
+                if (velocity > 0) {
+                    displayment = range[1] - this.position;
+                } else {
+                    displayment = range[0] - this.position;
+                }
+            }
+
             //位移为0，说明无需回弹
             if (displayment == 0) {
                 return 0;
             }
             //计算回弹加速度，加速度方向决定了回弹方向
-            var velocity = 0,
-                durationFrames = 15;
+            var durationFrames = 15;
             var acceleration = this._getAcceleration(velocity, displayment, durationFrames);
-
-            //回弹范围
-            var range = [Math.floor(offset) * this.pageSize, Math.ceil(offset) * this.pageSize];
 
             //执行回弹动画
             this._startAnimation(function () {
@@ -281,6 +290,8 @@ var Slider = function () {
                     if (newPosition >= range[1]) {
                         newPosition = range[1];
                     }
+
+                    //遇到临界值，应该要结束动画了
                     _this3._stopAnimation();
                     _this3.currentPage = parseInt(Math.abs(newPosition / _this3.pageSize)) + 1;
                     _this3._setOnSlideOver(_this3.currentPage);
@@ -295,13 +306,6 @@ var Slider = function () {
         key: '_slideOver',
         value: function _slideOver(velocity) {}
 
-        //计算将要回弹进入的页面
-
-    }, {
-        key: '_willReboundPage',
-        value: function _willReboundPage() {
-            return Math.round(Math.abs(this.position) / this.pageHeight);
-        }
         //一屏滚动完成触发
 
     }, {
