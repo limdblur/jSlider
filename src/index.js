@@ -196,12 +196,13 @@ class Slider {
         //判断是否触发了循环滚动
         if(this.loop == true) {
             if(this._position <= (1 - this._totalPage) * this._pageSize){
-                newPosition = - this._pageSize - 1;
+                newPosition = - this._pageSize;
             }
             if(this._position >= 0) {
                 newPosition = (2 - this._totalPage) * this._pageSize;
             }
             if(newPosition != this._position){
+                console.log(newPosition);
                 this._requestFrame()(()=>this._render(newPosition));
             }
         }
@@ -224,10 +225,10 @@ class Slider {
     //v : 初始速度
     //s : 总位移
     //t : 消耗的总时间，这里是帧数，约定30帧(大约半秒)执行完
-    _getAcceleration(v, s, t = 30){
-        //公式: v*t + a*t*t/2 = s
-        return ( s - v * t ) * 2 / ( t * t );
-    }
+    // _getAcceleration(v, s, t = 30){
+    //     //公式: v*t + a*t*t/2 = s
+    //     return ( s - v * t ) * 2 / ( t * t );
+    // }
 
     //特定速度下回弹
     _rebound(velocity = 0){
@@ -298,5 +299,5 @@ new Slider({
     loop: true,
     // onSlideOver: ()=>{console.log(`test`)},
     animationDuration: 30,
-    animateVelocityRatio: 1
+    animateVelocityRatio: 1.05
 });
