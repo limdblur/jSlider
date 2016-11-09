@@ -2,15 +2,20 @@ class Slider {
     constructor(binder){
         this.element = binder; //容器对象
 
-        this.autoSlide = false; //自动轮播
-        this.onSlideOver = null; //一页进行到底时触发事件
+        this.autoSlide = false; //自动轮播 todo
+        this.loop = false; //是否允许循环滚动
+
+        //一页进行到底时触发事件
+        //此参数主要是方便处理一些页面载入载出相关的逻辑
+        this.onSlideOver = null;
+
+        //滚动方向
         this.orientation = 'vertical'; // horizontal || verical
         if(this.orientation != 'vertical' && this.orientation !== 'horizontal') {
             throw new Error('must specify orientation of the slider');
         }
 
-        this.loop = false; //是否允许循环滚动
-        this.isAnimating = false;
+        this.isAnimating = false; //是否正在动画
 
         this.position = 0;
         this.currentPage = 1; //序号从1开始
@@ -22,7 +27,9 @@ class Slider {
             this.pageSize = this.parent.offsetWidth;
         }
 
-        this._thresholdVelocity = 10; //最大速度，超过此速度，始终惯性翻屏
+        this._thresholdVelocity = 3; //最大回弹速度，低于次速度，则认为跟随停止（即按住不动）
+        this._animationDuration = 40; //此处的数值代表帧数，也就是说预计在多少帧完成动画
+        this._animateVelocityRatio = 1.05; //此处的数值代表速度缓动系数，最好在0.99-1.10之间变化
 
 
         this._responder();
@@ -56,12 +63,12 @@ class Slider {
         //以下为事件响应器
         let start = (e)=>{
             if(!this.response.inResponse){
+                //一旦开始响应，将要移除上一次的动画执行时
+                this._stopAnimation();
+
                 this.response.inResponse = true;
                 this.response.position = getTouchPosition(e);
                 this.response.responseTime = Date.now();
-
-                //一旦开始响应，将要移除上一次的动画执行时
-                this._stopAnimation();
             }
         };
         let move = (e)=>{
@@ -77,17 +84,9 @@ class Slider {
         };
         let end = (e) => {
             if(this.response.inResponse){
-                //停留事件代表手指停留在屏幕静止不动的时间
                 let lastVelocity = this.response.velocity;
                 this._responderInit();
-                //重要: 核心运动逻辑在这里
-                if(Math.abs(lastVelocity) > this._thresholdVelocity){
-                    this._rebound(lastVelocity, true);
-                } else {
-                    //认为停留过长（按着屏幕不动或者滑动过慢），直接按照惯性回弹处理
-                    this._rebound(0, false);
-                }
-
+                this._rebound(lastVelocity);
             }
         };
         let cancel = (e) => end(e);
@@ -146,6 +145,7 @@ class Slider {
 
         //在这里更新位置
         this.position = newPosition;
+        this.currentPage = parseInt(Math.abs(newPosition/this.pageSize)) + 1;
 
         let style = `translate3d(${this.position}px, 0, 0)`;
         if(this.orientation == 'vertical') {
@@ -162,31 +162,14 @@ class Slider {
 
     //跟随(也就是手指或鼠标拖动)
     _follow(offsetPosition){
-        //跟随不切换页，先求边界页
-        let boundary = null;
-        if(this.currentPage == 1){
-            boundary = [1, this.totalPage >= 2 ? 2 : 1];
-        } else if(this.currentPage == this.totalPage){
-            // boundary = [this.totalPage >= 2 ? this.totalPage - 1 : this.totalPage ,this.totalPage];
-            boundary = [this.totalPage - 1, this.totalPage];
-        } else {
-            boundary = [this.currentPage - 1, this.currentPage + 1];
-        }
-
-        //然后计算边界临界值
-        let rangePosition = {
-            start: (boundary[0] - 1) * this.pageSize,
-            end: -(boundary[1] - 1) * this.pageSize
-        };
-
+        //临界值处理
+        let range = [(1 - this.totalPage) * this.pageSize, 0];
         let newPosition = this.position + offsetPosition;
-        if(newPosition >= rangePosition.start) {
-            newPosition = rangePosition.start;
+        if(newPosition <= range[0]){
+            newPosition = range[0];
+        } else if(newPosition >= range[1]) {
+            newPosition = range[1];
         }
-        if(newPosition <= rangePosition.end) {
-            newPosition = rangePosition.end;
-        }
-
         this._render(newPosition);
     }
 
@@ -200,38 +183,32 @@ class Slider {
     }
 
     //特定速度下回弹
-    //direct: bool 是否直接到底（也就是直接翻页）
-    _rebound(velocity = 0, direct = false){
-        //当前位置比例
-        let ratio = this.position/this.pageSize;
-        //回弹范围
+    _rebound(velocity = 0){
+
+        let pageRatio = this.position / this.pageSize;
         let range = [
-            Math.floor(ratio)*this.pageSize,
-            Math.ceil(ratio)*this.pageSize
+            Math.floor(pageRatio) * this.pageSize,
+            Math.ceil(pageRatio) * this.pageSize
         ];
-        //计算位移
-        let displayment = (Math.round(ratio) - ratio)*this.pageSize;
-        if(direct == true){
+        let displayment = 0;
+        if(Math.abs(velocity) >= this._thresholdVelocity) {
             if(velocity > 0) {
                 displayment = range[1] - this.position;
             } else {
                 displayment = range[0] - this.position;
             }
+        } else {
+            //这部分逻辑可选，移除将消灭回弹效果，但会移除一些触发不灵敏的bug
+            displayment = Math.round(pageRatio) * this.pageSize - this.position;
         }
 
-        //位移为0，说明无需回弹
-        if(displayment == 0) {
-            return 0;
-        }
-        //计算回弹加速度，加速度方向决定了回弹方向
-        let durationFrames = 15;
-        let acceleration = this._getAcceleration(velocity, displayment, durationFrames);
+        let step = displayment / this._animationDuration;
 
-
-        //执行回弹动画
+        //开始执行动画
         this._startAnimation(()=>{
-            velocity += acceleration;
-            let newPosition = this.position + velocity;
+            step *= this._animateVelocityRatio;
+            let newPosition = this.position + step;
+
             if(newPosition <= range[0] || newPosition >= range[1]){
                 if(newPosition <= range[0]) {
                     newPosition = range[0];
@@ -240,26 +217,26 @@ class Slider {
                     newPosition = range[1];
                 }
 
-                //遇到临界值，应该要结束动画了
+                this._setOnSlideOver({
+                    previousPage: this.currentPage,
+                    newPage: Math.abs(newPosition/this.pageSize) + 1
+                });
+
+                //缓动到了临界值，应该要结束动画了
                 this._stopAnimation();
-                this.currentPage = parseInt(Math.abs(newPosition/this.pageSize)) + 1;
-                this._setOnSlideOver(this.currentPage);
             }
             this._render(newPosition);
+
         });
 
     }
 
-    //带初始速度滑到底
-    _slideOver(velocity){
-
-    }
-
     //一屏滚动完成触发
-    _setOnSlideOver(pageIndex){
+    _setOnSlideOver(pageInfo){
         this.onSlideOver &&
         typeof this.onSlideOver == 'function' &&
-        this.onSlideOver(pageIndex);
+        this.onSlideOver(pageInfo);
+        console.log(pageInfo);
     }
     //停止自动滚动
     stopAutoSlide(){}
