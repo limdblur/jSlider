@@ -240,7 +240,6 @@ var Slider = function () {
                     newPosition = (2 - this._totalPage) * this._pageSize;
                 }
                 if (newPosition != this._position) {
-                    console.log(newPosition);
                     this._requestFrame()(function () {
                         return _this3._render(newPosition);
                     });

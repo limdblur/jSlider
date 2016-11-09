@@ -202,7 +202,6 @@ class Slider {
                 newPosition = (2 - this._totalPage) * this._pageSize;
             }
             if(newPosition != this._position){
-                console.log(newPosition);
                 this._requestFrame()(()=>this._render(newPosition));
             }
         }
