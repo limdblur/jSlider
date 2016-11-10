@@ -239,7 +239,7 @@ export default class Slider {
             if('transform' in this.element.style) {
                 styleName = 'transform'
             }
-
+            
             let style = `translate3d(${position}px, 0, 0)`;
             if(this.orientation == 'vertical') {
                 style = `translate3d(0, ${position}px, 0)`;
