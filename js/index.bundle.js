@@ -42,9 +42,44 @@
 /************************************************************************/
 /******/ ([
 /* 0 */
+/***/ function(module, exports, __webpack_require__) {
+
+	'use strict';
+
+	var _slider = __webpack_require__(1);
+
+	var _slider2 = _interopRequireDefault(_slider);
+
+	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+	//================================
+	//=========Test Case Here=========
+	//================================
+	new _slider2.default({
+	    binder: document.getElementById('container'),
+	    orientation: 'vertical',
+
+	    autoSlide: true,
+	    autoSlideDirection: true,
+	    loop: true,
+	    onPageShow: function onPageShow(pageInfo) {
+	        console.log(pageInfo);
+	    },
+
+	    animationDuration: 30,
+	    animateVelocityRatio: 1.05,
+	    autoSlideInreval: 3000 //3s
+	});
+
+/***/ },
+/* 1 */
 /***/ function(module, exports) {
 
 	'use strict';
+
+	Object.defineProperty(exports, "__esModule", {
+	    value: true
+	});
 
 	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
 
@@ -61,8 +96,21 @@
 	        }
 	        this.element = option.binder; //容器对象
 
-	        //是否自动轮播
-	        this.autoSlide = option.autoSlide || false; //自动轮播
+	        /**
+	         * loop： 列表是否可以循环
+	         * autoSlide: 列表是否可以自动轮播
+	         * autoSlide会自动激活loop
+	         */
+	        this.loop = !!option.loop;
+	        this.autoSlide = !!option.autoSlide;
+	        if (this.autoSlide == true) {
+	            this.loop = true;
+	        }
+
+	        //自动轮播方向，默认正向，垂直时向下，水平时向右
+	        //正向：false  反向：true
+	        this.autoSlideDirection = !!option.autoSlideDirection;
+
 	        //自动轮播每屏间隔时间
 	        if (!option.autoSlideInreval || typeof option.autoSlideInreval != 'number') {
 	            this.autoSlideInreval = 3000;
@@ -71,14 +119,12 @@
 	        }
 	        //每屏轮播计时器
 	        this._autoSlideTimer = 0;
-	        //是否允许循环滚动
-	        this.loop = option.loop || false;
 
 	        //一页进行到底时触发事件
 	        //此参数主要是方便处理一些页面载入载出相关的逻辑
-	        this.onSlideOver = null;
-	        if (option.onSlideOver && typeof option.onSlideOver == 'function') {
-	            this.onSlideOver = option.onSlideOver;
+	        this.onPageShow = null;
+	        if (option.onPageShow && typeof option.onPageShow == 'function') {
+	            this.onPageShow = option.onPageShow;
 	        }
 
 	        //方向， 支持垂直和水平
@@ -124,6 +170,10 @@
 	    _createClass(Slider, [{
 	        key: '_sliderInit',
 	        value: function _sliderInit() {
+	            //响应系统逻辑优先初始化
+	            this._responder();
+
+	            //循环滚动逻辑
 	            if (true == this.loop) {
 	                var tmpFirstNode = this._children.item(0).cloneNode(true),
 	                    tmpLastNode = this._children.item(this._children.length - 1).cloneNode(true);
@@ -132,9 +182,6 @@
 	                this.element.appendChild(tmpFirstNode);
 	                this._render(-this._pageSize);
 	            }
-
-	            //响应系统逻辑
-	            this._responder();
 	            //自动滚动逻辑
 	            this._startAutoSlide();
 	        }
@@ -290,15 +337,11 @@
 	                }
 	            }
 
-	            //以下逻辑代表触发了翻页，每次翻页都要触发相应的逻辑
-	            var newPage = parseInt(Math.abs(this._position / this._pageSize)) + 1;
-	            if (this._currentPage != newPage) {
-	                this._setOnSlideOver({
-	                    previousPage: this._currentPage,
-	                    newPage: newPage
-	                });
-
-	                this._currentPage = newPage;
+	            this._currentPage = parseInt(Math.abs(this._position / this._pageSize)) + 1;
+	            //非跟随状态出现位置整除，则认为触发边界,触发边界要停止动画和自动滚动
+	            if (!this._response.inResponse && this._position % this._pageSize === 0) {
+	                //设置新页载入
+	                this._setOnPageShow();
 
 	                //触发临界值，停止动画和自动轮播
 	                this._stopAutoSlide();
@@ -343,7 +386,7 @@
 	        //根据位移公式计算加速度
 	        //v : 初始速度
 	        //s : 总位移
-	        //t : 消耗的总时间，这里是帧数，约定30帧(大约半秒)执行完
+	        //t : 消耗的总时间，这里是帧数
 
 	    }, {
 	        key: '_getAcceleration',
@@ -378,6 +421,11 @@
 	                displayment = Math.round(pageRatio) * this._pageSize - this._position;
 	            }
 
+	            //如果位移为0值，则不应该执行任何惯性逻辑
+	            if (displayment === 0) {
+	                return;
+	            }
+
 	            var duration = Math.abs(displayment / this._pageSize) * this.animationDuration;
 	            var step = displayment / duration;
 
@@ -400,10 +448,23 @@
 	        //一屏滚动完成触发
 
 	    }, {
-	        key: '_setOnSlideOver',
-	        value: function _setOnSlideOver(pageInfo) {
-	            this.onSlideOver && typeof this.onSlideOver == 'function' && this.onSlideOver(pageInfo);
+	        key: '_setOnPageShow',
+	        value: function _setOnPageShow() {
+	            var trueLength = this._children.length,
+	                page = void 0;
+	            if (this.loop == false) {
+	                page = this._currentPage;
+	            } else if (this._currentPage == trueLength + 2) {
+	                page = 1;
+	            } else if (this._currentPage == 1) {
+	                page = trueLength;
+	            } else {
+	                page = this._currentPage - 1;
+	            }
+	            var target = this.element.children.item(this._currentPage - 1);
+	            this.onPageShow && typeof this.onPageShow == 'function' && this.onPageShow({ page: page, target: target });
 	        }
+
 	        //停止自动滚动
 
 	    }, {
@@ -428,9 +489,18 @@
 	                    (function () {
 	                        _this5._isAutoSlide = true;
 	                        //满足以上条件才可以开始自动轮播
-	                        var velocity = 0;
-	                        var acceleration = _this5._getAcceleration(velocity, -_this5._pageSize, _this5.animationDuration);
-	                        var range = [-_this5._currentPage * _this5._pageSize, (1 - _this5._currentPage) * _this5._pageSize];
+	                        var velocity = 0,
+	                            displayment = void 0,
+	                            range = void 0;
+	                        if (_this5.autoSlideDirection) {
+	                            displayment = _this5._pageSize;
+	                            range = [(1 - _this5._currentPage) * _this5._pageSize, (2 - _this5._currentPage) * _this5._pageSize];
+	                        } else {
+	                            displayment = -_this5._pageSize;
+	                            range = [-_this5._currentPage * _this5._pageSize, (1 - _this5._currentPage) * _this5._pageSize];
+	                        }
+
+	                        var acceleration = _this5._getAcceleration(velocity, displayment, _this5.animationDuration);
 	                        _this5._autoSlideTimer = window.setTimeout(function () {
 	                            _this5._startAnimation(function () {
 	                                velocity += acceleration;
@@ -453,18 +523,7 @@
 	    return Slider;
 	}();
 
-	new Slider({
-	    binder: document.getElementById('container'),
-	    orientation: 'vertical',
-	    autoSlide: true,
-	    loop: true,
-	    onSlideOver: function onSlideOver(pageInfo) {
-	        console.log(pageInfo);
-	    },
-	    animationDuration: 30,
-	    animateVelocityRatio: 1.05,
-	    autoSlideInreval: 5000 //3s
-	});
+	exports.default = Slider;
 
 /***/ }
 /******/ ]);
