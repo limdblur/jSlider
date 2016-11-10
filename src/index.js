@@ -5,8 +5,18 @@ class Slider {
         }
         this.element = option.binder; //容器对象
 
-        this.autoSlide = option.autoSlide || false; //自动轮播 todo
-        this.loop = option.loop || false; //是否允许循环滚动
+        //是否自动轮播
+        this.autoSlide = option.autoSlide || false; //自动轮播
+        //自动轮播每屏间隔时间
+        if(!option.autoSlideInreval || typeof option.autoSlideInreval != 'number') {
+            this.autoSlideInreval = 3000;
+        } else {
+            this.autoSlideInreval = option.autoSlideInreval;
+        }
+        //每屏轮播计时器
+        this._autoSlideTimer = 0;
+        //是否允许循环滚动
+        this.loop = option.loop || false;
 
         //一页进行到底时触发事件
         //此参数主要是方便处理一些页面载入载出相关的逻辑
@@ -31,12 +41,14 @@ class Slider {
             this._pageSize = this._children.item(0).offsetWidth;
         }
 
+        //是否正在自动滚动
+        this._isAutoSlide = false;
         //是否正在动画
         this._isAnimating = false;
         //最大回弹速度，低于次速度，则认为跟随停止（即按住不动）
         this._thresholdVelocity = 3;
         //此处的数值代表帧数，也就是说预计在多少帧完成动画
-        this.animationDuration = 40;
+        this.animationDuration = 60;
         if(option.animationDuration && typeof option.animationDuration == 'number'){
             this.animationDuration = option.animationDuration;
         }
@@ -48,8 +60,6 @@ class Slider {
 
         //控件初始化
         this._sliderInit();
-        //响应系统逻辑
-        this._responder();
     }
 
     //根据传入的参数做一次初始化
@@ -62,11 +72,16 @@ class Slider {
             this.element.appendChild(tmpFirstNode);
             this._render(-this._pageSize);
         }
+
+        //响应系统逻辑
+        this._responder();
+        //自动滚动逻辑
+        this._startAutoSlide();
     }
 
     //初始化响应参数
     _responderInit(){
-        this.response = {
+        this._response = {
             inResponse: false,  //是否正在响应状态
             position: null, //响应时的位置
             velocity: 0 //移动速度
@@ -90,31 +105,35 @@ class Slider {
         };
         //以下为事件响应器
         let start = (e)=>{
-            if(!this.response.inResponse){
+            if(!this._response.inResponse){
                 //一旦开始响应，将要移除上一次的动画执行时
                 this._stopAnimation();
+                this._stopAutoSlide();
 
-                this.response.inResponse = true;
-                this.response.position = getTouchPosition(e);
-                this.response.responseTime = Date.now();
+                this._response.inResponse = true;
+                this._response.position = getTouchPosition(e);
+                this._response.responseTime = Date.now();
             }
         };
         let move = (e)=>{
             e.preventDefault();
-            if(this.response.inResponse){
+            if(this._response.inResponse){
                 let tmpMovePosition = getTouchPosition(e);
-                let offsetPosition = tmpMovePosition - this.response.position;
-                this.response.position = tmpMovePosition;
-                this.response.velocity = offsetPosition;
+                let offsetPosition = tmpMovePosition - this._response.position;
+                this._response.position = tmpMovePosition;
+                this._response.velocity = offsetPosition;
 
                 this._follow(offsetPosition);
             }
         };
         let end = (e) => {
-            if(this.response.inResponse){
-                let lastVelocity = this.response.velocity;
+            if(this._response.inResponse){
+                let lastVelocity = this._response.velocity;
                 this._responderInit();
                 this._rebound(lastVelocity);
+
+                //为了防止跟随在边缘，强制启动自动轮播
+                this._startAutoSlide();
             }
         };
         let cancel = (e) => end(e);
@@ -135,6 +154,8 @@ class Slider {
         let requestFrame =
             window.requestAnimationFrame ||
             window.webkitRequestAnimationFrame ||
+            window.mozRequestAnimationFrame ||
+            window.msRequestAnimationFrame ||
             function(frame){
                 return window.setTimeout(frame, 1000/60);
             };
@@ -176,7 +197,33 @@ class Slider {
 
         //在这里更新位置和当前页码
         this._position = newPosition;
-        this._currentPage = parseInt(Math.abs(newPosition/this._pageSize)) + 1;
+
+        //判断是否触发了循环滚动
+        if(this.loop == true) {
+            if(this._position <= (1 - this._totalPage) * this._pageSize){
+                this._position = - this._pageSize;
+            }
+            if(this._position >= 0) {
+                this._position = (2 - this._totalPage) * this._pageSize;
+            }
+        }
+
+        //以下逻辑代表触发了翻页，每次翻页都要触发相应的逻辑
+        let newPage = parseInt(Math.abs(this._position/this._pageSize)) + 1;
+        if(this._currentPage != newPage) {
+            this._setOnSlideOver({
+                previousPage: this._currentPage,
+                newPage
+            });
+
+            this._currentPage = newPage;
+
+            //触发临界值，停止动画和自动轮播
+            this._stopAutoSlide();
+            this._requestFrame()(()=>{
+                this._startAutoSlide();
+            });
+        }
 
         let translate3d = (position)=>{
             let styleName = 'webkitTransform';
@@ -190,21 +237,9 @@ class Slider {
             }
             this.element.style[styleName] = style;
         }
+
         //先执行移动
         translate3d(this._position);
-
-        //判断是否触发了循环滚动
-        if(this.loop == true) {
-            if(this._position <= (1 - this._totalPage) * this._pageSize){
-                newPosition = - this._pageSize;
-            }
-            if(this._position >= 0) {
-                newPosition = (2 - this._totalPage) * this._pageSize;
-            }
-            if(newPosition != this._position){
-                this._requestFrame()(()=>this._render(newPosition));
-            }
-        }
     }
 
     //跟随(也就是手指或鼠标拖动)
@@ -224,10 +259,10 @@ class Slider {
     //v : 初始速度
     //s : 总位移
     //t : 消耗的总时间，这里是帧数，约定30帧(大约半秒)执行完
-    // _getAcceleration(v, s, t = 30){
-    //     //公式: v*t + a*t*t/2 = s
-    //     return ( s - v * t ) * 2 / ( t * t );
-    // }
+    _getAcceleration(v, s, t = 30){
+        //公式: v*t + a*t*t/2 = s
+        return ( s - v * t ) * 2 / ( t * t );
+    }
 
     //特定速度下回弹
     _rebound(velocity = 0){
@@ -249,29 +284,21 @@ class Slider {
             displayment = Math.round(pageRatio) * this._pageSize - this._position;
         }
 
-        let step = displayment / this.animationDuration;
+        let duration = Math.abs(displayment/this._pageSize) * this.animationDuration;
+        let step = displayment / duration;
 
         //开始执行动画
         this._startAnimation(()=>{
             step *= this.animateVelocityRatio;
             let newPosition = this._position + step;
 
-            if(newPosition <= range[0] || newPosition >= range[1]){
-                if(newPosition <= range[0]) {
-                    newPosition = range[0];
-                }
-                if(newPosition >= range[1]){
-                    newPosition = range[1];
-                }
-
-                this._setOnSlideOver({
-                    previousPage: this._currentPage,
-                    newPage: Math.abs(newPosition/this._pageSize) + 1
-                });
-
-                //缓动到了临界值，应该要结束动画了
-                this._stopAnimation();
+            if(newPosition <= range[0]) {
+                newPosition = range[0];
             }
+            if(newPosition >= range[1]){
+                newPosition = range[1];
+            }
+
             this._render(newPosition);
 
         });
@@ -285,18 +312,54 @@ class Slider {
         this.onSlideOver(pageInfo);
     }
     //停止自动滚动
-    stopAutoSlide(){}
+    _stopAutoSlide(){
+        this._isAutoSlide = false;
+        this._isAnimating = false;
+        window.clearTimeout(this._autoSlideTimer);
+    }
     //开始自动滚动
-    startAutoSlide(){}
+    _startAutoSlide(){
+        if(
+            this.autoSlide && //启用了自动轮播
+            !this._response.inResponse && //不是在跟随状态
+            !this._isAutoSlide && //不是在自动轮播状态
+            !this._isAnimating //不是正在动画
+        ) {
+            this._isAutoSlide = true;
+            //满足以上条件才可以开始自动轮播
+            let velocity = 0;
+            let acceleration = this._getAcceleration(velocity, -this._pageSize, this.animationDuration);
+            let range = [
+                 - this._currentPage * this._pageSize,
+                 (1 - this._currentPage) * this._pageSize
+            ];
+            this._autoSlideTimer = window.setTimeout(()=>{
+                this._startAnimation(()=>{
+                    velocity += acceleration;
+                    let newPosition = this._position + velocity;
+                    if(newPosition <= range[0]) {
+                        newPosition = range[0];
+                    }
+                    if(newPosition >= range[1]) {
+                        newPosition = range[1];
+                    }
+
+                    this._render(newPosition);
+                });
+            }, this.autoSlideInreval);
+        }
+    }
+
 
 }
 
 new Slider({
     binder: document.getElementById('container'),
     orientation: 'vertical',
-    autoSlide: false,
+    autoSlide: true,
     loop: true,
-    // onSlideOver: ()=>{console.log(`test`)},
+    onSlideOver: (pageInfo)=>{console.log(pageInfo)},
     animationDuration: 30,
-    animateVelocityRatio: 1.05
+    animateVelocityRatio: 1.05,
+    autoSlideInreval: 5000 //3s
 });

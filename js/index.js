@@ -15,8 +15,18 @@ var Slider = function () {
         }
         this.element = option.binder; //容器对象
 
-        this.autoSlide = option.autoSlide || false; //自动轮播 todo
-        this.loop = option.loop || false; //是否允许循环滚动
+        //是否自动轮播
+        this.autoSlide = option.autoSlide || false; //自动轮播
+        //自动轮播每屏间隔时间
+        if (!option.autoSlideInreval || typeof option.autoSlideInreval != 'number') {
+            this.autoSlideInreval = 3000;
+        } else {
+            this.autoSlideInreval = option.autoSlideInreval;
+        }
+        //每屏轮播计时器
+        this._autoSlideTimer = 0;
+        //是否允许循环滚动
+        this.loop = option.loop || false;
 
         //一页进行到底时触发事件
         //此参数主要是方便处理一些页面载入载出相关的逻辑
@@ -41,12 +51,14 @@ var Slider = function () {
             this._pageSize = this._children.item(0).offsetWidth;
         }
 
+        //是否正在自动滚动
+        this._isAutoSlide = false;
         //是否正在动画
         this._isAnimating = false;
         //最大回弹速度，低于次速度，则认为跟随停止（即按住不动）
         this._thresholdVelocity = 3;
         //此处的数值代表帧数，也就是说预计在多少帧完成动画
-        this.animationDuration = 40;
+        this.animationDuration = 60;
         if (option.animationDuration && typeof option.animationDuration == 'number') {
             this.animationDuration = option.animationDuration;
         }
@@ -58,8 +70,6 @@ var Slider = function () {
 
         //控件初始化
         this._sliderInit();
-        //响应系统逻辑
-        this._responder();
     }
 
     //根据传入的参数做一次初始化
@@ -76,6 +86,11 @@ var Slider = function () {
                 this.element.appendChild(tmpFirstNode);
                 this._render(-this._pageSize);
             }
+
+            //响应系统逻辑
+            this._responder();
+            //自动滚动逻辑
+            this._startAutoSlide();
         }
 
         //初始化响应参数
@@ -83,7 +98,7 @@ var Slider = function () {
     }, {
         key: '_responderInit',
         value: function _responderInit() {
-            this.response = {
+            this._response = {
                 inResponse: false, //是否正在响应状态
                 position: null, //响应时的位置
                 velocity: 0 //移动速度
@@ -112,31 +127,35 @@ var Slider = function () {
             };
             //以下为事件响应器
             var start = function start(e) {
-                if (!_this.response.inResponse) {
+                if (!_this._response.inResponse) {
                     //一旦开始响应，将要移除上一次的动画执行时
                     _this._stopAnimation();
+                    _this._stopAutoSlide();
 
-                    _this.response.inResponse = true;
-                    _this.response.position = getTouchPosition(e);
-                    _this.response.responseTime = Date.now();
+                    _this._response.inResponse = true;
+                    _this._response.position = getTouchPosition(e);
+                    _this._response.responseTime = Date.now();
                 }
             };
             var move = function move(e) {
                 e.preventDefault();
-                if (_this.response.inResponse) {
+                if (_this._response.inResponse) {
                     var tmpMovePosition = getTouchPosition(e);
-                    var offsetPosition = tmpMovePosition - _this.response.position;
-                    _this.response.position = tmpMovePosition;
-                    _this.response.velocity = offsetPosition;
+                    var offsetPosition = tmpMovePosition - _this._response.position;
+                    _this._response.position = tmpMovePosition;
+                    _this._response.velocity = offsetPosition;
 
                     _this._follow(offsetPosition);
                 }
             };
             var end = function end(e) {
-                if (_this.response.inResponse) {
-                    var lastVelocity = _this.response.velocity;
+                if (_this._response.inResponse) {
+                    var lastVelocity = _this._response.velocity;
                     _this._responderInit();
                     _this._rebound(lastVelocity);
+
+                    //为了防止跟随在边缘，强制启动自动轮播
+                    _this._startAutoSlide();
                 }
             };
             var cancel = function cancel(e) {
@@ -157,7 +176,7 @@ var Slider = function () {
     }, {
         key: '_requestFrame',
         value: function _requestFrame() {
-            var requestFrame = window.requestAnimationFrame || window.webkitRequestAnimationFrame || function (frame) {
+            var requestFrame = window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame || function (frame) {
                 return window.setTimeout(frame, 1000 / 60);
             };
             return requestFrame;
@@ -214,7 +233,33 @@ var Slider = function () {
 
             //在这里更新位置和当前页码
             this._position = newPosition;
-            this._currentPage = parseInt(Math.abs(newPosition / this._pageSize)) + 1;
+
+            //判断是否触发了循环滚动
+            if (this.loop == true) {
+                if (this._position <= (1 - this._totalPage) * this._pageSize) {
+                    this._position = -this._pageSize;
+                }
+                if (this._position >= 0) {
+                    this._position = (2 - this._totalPage) * this._pageSize;
+                }
+            }
+
+            //以下逻辑代表触发了翻页，每次翻页都要触发相应的逻辑
+            var newPage = parseInt(Math.abs(this._position / this._pageSize)) + 1;
+            if (this._currentPage != newPage) {
+                this._setOnSlideOver({
+                    previousPage: this._currentPage,
+                    newPage: newPage
+                });
+
+                this._currentPage = newPage;
+
+                //触发临界值，停止动画和自动轮播
+                this._stopAutoSlide();
+                this._requestFrame()(function () {
+                    _this3._startAutoSlide();
+                });
+            }
 
             var translate3d = function translate3d(position) {
                 var styleName = 'webkitTransform';
@@ -228,23 +273,9 @@ var Slider = function () {
                 }
                 _this3.element.style[styleName] = style;
             };
+
             //先执行移动
             translate3d(this._position);
-
-            //判断是否触发了循环滚动
-            if (this.loop == true) {
-                if (this._position <= (1 - this._totalPage) * this._pageSize) {
-                    newPosition = -this._pageSize;
-                }
-                if (this._position >= 0) {
-                    newPosition = (2 - this._totalPage) * this._pageSize;
-                }
-                if (newPosition != this._position) {
-                    this._requestFrame()(function () {
-                        return _this3._render(newPosition);
-                    });
-                }
-            }
         }
 
         //跟随(也就是手指或鼠标拖动)
@@ -267,10 +298,15 @@ var Slider = function () {
         //v : 初始速度
         //s : 总位移
         //t : 消耗的总时间，这里是帧数，约定30帧(大约半秒)执行完
-        // _getAcceleration(v, s, t = 30){
-        //     //公式: v*t + a*t*t/2 = s
-        //     return ( s - v * t ) * 2 / ( t * t );
-        // }
+
+    }, {
+        key: '_getAcceleration',
+        value: function _getAcceleration(v, s) {
+            var t = arguments.length <= 2 || arguments[2] === undefined ? 30 : arguments[2];
+
+            //公式: v*t + a*t*t/2 = s
+            return (s - v * t) * 2 / (t * t);
+        }
 
         //特定速度下回弹
 
@@ -296,29 +332,21 @@ var Slider = function () {
                 displayment = Math.round(pageRatio) * this._pageSize - this._position;
             }
 
-            var step = displayment / this.animationDuration;
+            var duration = Math.abs(displayment / this._pageSize) * this.animationDuration;
+            var step = displayment / duration;
 
             //开始执行动画
             this._startAnimation(function () {
                 step *= _this4.animateVelocityRatio;
                 var newPosition = _this4._position + step;
 
-                if (newPosition <= range[0] || newPosition >= range[1]) {
-                    if (newPosition <= range[0]) {
-                        newPosition = range[0];
-                    }
-                    if (newPosition >= range[1]) {
-                        newPosition = range[1];
-                    }
-
-                    _this4._setOnSlideOver({
-                        previousPage: _this4._currentPage,
-                        newPage: Math.abs(newPosition / _this4._pageSize) + 1
-                    });
-
-                    //缓动到了临界值，应该要结束动画了
-                    _this4._stopAnimation();
+                if (newPosition <= range[0]) {
+                    newPosition = range[0];
                 }
+                if (newPosition >= range[1]) {
+                    newPosition = range[1];
+                }
+
                 _this4._render(newPosition);
             });
         }
@@ -333,13 +361,47 @@ var Slider = function () {
         //停止自动滚动
 
     }, {
-        key: 'stopAutoSlide',
-        value: function stopAutoSlide() {}
+        key: '_stopAutoSlide',
+        value: function _stopAutoSlide() {
+            this._isAutoSlide = false;
+            this._isAnimating = false;
+            window.clearTimeout(this._autoSlideTimer);
+        }
         //开始自动滚动
 
     }, {
-        key: 'startAutoSlide',
-        value: function startAutoSlide() {}
+        key: '_startAutoSlide',
+        value: function _startAutoSlide() {
+            var _this5 = this;
+
+            if (this.autoSlide && //启用了自动轮播
+            !this._response.inResponse && //不是在跟随状态
+            !this._isAutoSlide && //不是在自动轮播状态
+            !this._isAnimating //不是正在动画
+            ) {
+                    (function () {
+                        _this5._isAutoSlide = true;
+                        //满足以上条件才可以开始自动轮播
+                        var velocity = 0;
+                        var acceleration = _this5._getAcceleration(velocity, -_this5._pageSize, _this5.animationDuration);
+                        var range = [-_this5._currentPage * _this5._pageSize, (1 - _this5._currentPage) * _this5._pageSize];
+                        _this5._autoSlideTimer = window.setTimeout(function () {
+                            _this5._startAnimation(function () {
+                                velocity += acceleration;
+                                var newPosition = _this5._position + velocity;
+                                if (newPosition <= range[0]) {
+                                    newPosition = range[0];
+                                }
+                                if (newPosition >= range[1]) {
+                                    newPosition = range[1];
+                                }
+
+                                _this5._render(newPosition);
+                            });
+                        }, _this5.autoSlideInreval);
+                    })();
+                }
+        }
     }]);
 
     return Slider;
@@ -348,9 +410,12 @@ var Slider = function () {
 new Slider({
     binder: document.getElementById('container'),
     orientation: 'vertical',
-    autoSlide: false,
+    autoSlide: true,
     loop: true,
-    // onSlideOver: ()=>{console.log(`test`)},
+    onSlideOver: function onSlideOver(pageInfo) {
+        console.log(pageInfo);
+    },
     animationDuration: 30,
-    animateVelocityRatio: 1.05
+    animateVelocityRatio: 1.05,
+    autoSlideInreval: 5000 //3s
 });
