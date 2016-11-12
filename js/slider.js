@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", {
     value: true
 });
 
-var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
@@ -314,7 +314,7 @@ var Slider = function () {
     }, {
         key: '_getAcceleration',
         value: function _getAcceleration(v, s) {
-            var t = arguments.length <= 2 || arguments[2] === undefined ? 30 : arguments[2];
+            var t = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 30;
 
             //公式: v*t + a*t*t/2 = s
             return (s - v * t) * 2 / (t * t);
@@ -327,7 +327,7 @@ var Slider = function () {
         value: function _rebound() {
             var _this4 = this;
 
-            var velocity = arguments.length <= 0 || arguments[0] === undefined ? 0 : arguments[0];
+            var velocity = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 0;
 
 
             var pageRatio = this._position / this._pageSize;

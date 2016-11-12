@@ -1,26 +1,22 @@
 'use strict';
 
-var _slider = require('./slider');
+var _JSlider = require('./JSlider');
 
-var _slider2 = _interopRequireDefault(_slider);
+var _JSlider2 = _interopRequireDefault(_JSlider);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 //================================
 //=========Test Case Here=========
 //================================
-new _slider2.default({
-    binder: document.getElementById('container'),
+new _JSlider2.default({
+    element: document.getElementById('container'),
     orientation: 'vertical',
-
-    autoSlide: true,
-    autoSlideDirection: true,
-    loop: true,
-    onPageShow: function onPageShow(pageInfo) {
-        console.log(pageInfo);
-    },
-
-    animationDuration: 30,
-    animateVelocityRatio: 1.05,
-    autoSlideInreval: 3000 //3s
+    inertiaFrame: 60,
+    inertiaFrameRatio: 1.01,
+    reboundCritical: 2,
+    autoCarousel: true,
+    // carouselReverse: true,
+    autoCarouselInterval: 3000,
+    loop: true
 });

@@ -46,29 +46,25 @@
 
 	'use strict';
 
-	var _slider = __webpack_require__(1);
+	var _JSlider = __webpack_require__(1);
 
-	var _slider2 = _interopRequireDefault(_slider);
+	var _JSlider2 = _interopRequireDefault(_JSlider);
 
 	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 	//================================
 	//=========Test Case Here=========
 	//================================
-	new _slider2.default({
-	    binder: document.getElementById('container'),
+	new _JSlider2.default({
+	    element: document.getElementById('container'),
 	    orientation: 'vertical',
-
-	    autoSlide: true,
-	    autoSlideDirection: true,
-	    loop: true,
-	    onPageShow: function onPageShow(pageInfo) {
-	        console.log(pageInfo);
-	    },
-
-	    animationDuration: 30,
-	    animateVelocityRatio: 1.05,
-	    autoSlideInreval: 3000 //3s
+	    inertiaFrame: 60,
+	    inertiaFrameRatio: 1.01,
+	    reboundCritical: 2,
+	    autoCarousel: true,
+	    // carouselReverse: true,
+	    autoCarouselInterval: 3000,
+	    loop: true
 	});
 
 /***/ },
@@ -81,121 +77,195 @@
 	    value: true
 	});
 
-	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
-
 	var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-	var Slider = function () {
-	    function Slider(option) {
-	        _classCallCheck(this, Slider);
+	var JSlider = function () {
+	    function JSlider(option) {
+	        _classCallCheck(this, JSlider);
 
-	        if ((typeof option === 'undefined' ? 'undefined' : _typeof(option)) != 'object' || !option.binder || !(option.binder instanceof Element)) {
-	            throw new Error('Parameter error.');
+	        //容器对象，代表轮播对象的父对象
+	        this.element = null;
+	        if (option.element && option.element instanceof Element) {
+	            this.element = option.element;
 	        }
-	        this.element = option.binder; //容器对象
+	        if (!this.element) {
+	            throw new Error('Must specify the slide container');
+	        }
 
 	        /**
-	         * loop： 列表是否可以循环
-	         * autoSlide: 列表是否可以自动轮播
-	         * autoSlide会自动激活loop
+	         * 0、默认状态
+	         * 1、响应状态，即是手指或鼠标拖放状态
+	         * 2、惯性状态，手指拖动结束之后惯性回弹
+	         * 3、自动轮播状态，只有设置了自动轮播才会开启
 	         */
+	        this._state = 0;
+
+	        //当前动画状态
+	        this._animation = false;
+
+	        //state=1 响应速度
+	        this._responseVelocity = 0;
+
+	        //轮播方向
+	        this.orientation = 'vertical';
+	        if (option.orientation && ['vertical', 'horizontal'].indexOf(option.orientation) != -1) {
+	            this.orientation = option.orientation;
+	        }
+
+	        //一维坐标，当前所处的位置
+	        this._position = 0;
+
+	        //回弹速度临界值，超过这个速度，可能回弹
+	        this.reboundCritical = 3;
+	        if (option.reboundCritical && typeof option.reboundCritical == 'number') {
+	            this.reboundCritical = option.reboundCritical;
+	        }
+
+	        //代表惯性运动需要耗费的时间，默认60帧
+	        this.inertiaFrame = 30;
+	        if (option.inertiaFrame && typeof option.inertiaFrame == 'number') {
+	            this.inertiaFrame = option.inertiaFrame;
+	        }
+	        //这个值会影响运动的变化值，加速、匀速等
+	        this.inertiaFrameRatio = 1;
+	        if (option.inertiaFrameRatio && typeof option.inertiaFrameRatio == 'number') {
+	            this.inertiaFrameRatio = option.inertiaFrameRatio;
+	        }
+
+	        //是否支持列表循环
 	        this.loop = !!option.loop;
-	        this.autoSlide = !!option.autoSlide;
-	        if (this.autoSlide == true) {
+	        //是否自动轮播
+	        this.autoCarousel = !!option.autoCarousel;
+	        //自动轮播会激活loop属性为true
+	        if (this.autoCarousel) {
 	            this.loop = true;
 	        }
-
-	        //自动轮播方向，默认正向，垂直时向下，水平时向右
-	        //正向：false  反向：true
-	        this.autoSlideDirection = !!option.autoSlideDirection;
-
-	        //自动轮播每屏间隔时间
-	        if (!option.autoSlideInreval || typeof option.autoSlideInreval != 'number') {
-	            this.autoSlideInreval = 3000;
-	        } else {
-	            this.autoSlideInreval = option.autoSlideInreval;
+	        //是否逆向轮播，默认正向
+	        this.carouselReverse = !!option.carouselReverse;
+	        //自动轮播时每播完一屏停留的时间
+	        this.autoCarouselInterval = 3000; //ms
+	        if (option.autoCarouselInterval && typeof option.autoCarouselInterval == 'number') {
+	            this.autoCarouselInterval = option.autoCarouselInterval;
 	        }
-	        //每屏轮播计时器
-	        this._autoSlideTimer = 0;
+	        //轮播启动的计时器，清除将消灭轮播
+	        this._carouselTimer = 0;
 
-	        //一页进行到底时触发事件
-	        //此参数主要是方便处理一些页面载入载出相关的逻辑
-	        this.onPageShow = null;
-	        if (option.onPageShow && typeof option.onPageShow == 'function') {
-	            this.onPageShow = option.onPageShow;
-	        }
-
-	        //方向， 支持垂直和水平
-	        this.orientation = option.orientation || 'vertical'; // horizontal || verical
-	        if (this.orientation != 'vertical' && this.orientation !== 'horizontal') {
-	            throw new Error('Must specify corret orientation of the slider');
-	        }
-
-	        this._position = 0; //当前位置
-	        this._currentPage = 1; //序号从1开始
-	        this._children = this.element.querySelectorAll('.page');
-	        this._totalPage = this._children.length;
-	        if (this.orientation === 'vertical') {
-	            this._pageSize = this._children.item(0).offsetHeight;
-	        } else {
-	            this._pageSize = this._children.item(0).offsetWidth;
-	        }
-
-	        //是否正在自动滚动
-	        this._isAutoSlide = false;
-	        //是否正在动画
-	        this._isAnimating = false;
-	        //最大回弹速度，低于次速度，则认为跟随停止（即按住不动）
-	        this._thresholdVelocity = 3;
-	        //此处的数值代表帧数，也就是说预计在多少帧完成动画
-	        this.animationDuration = 60;
-	        if (option.animationDuration && typeof option.animationDuration == 'number') {
-	            this.animationDuration = option.animationDuration;
-	        }
-	        //此处的数值代表速度缓动系数，最好在0.99-1.10之间变化
-	        this.animateVelocityRatio = 1.05;
-	        if (option.animateVelocityRatio && typeof option.animateVelocityRatio == 'number') {
-	            this.animateVelocityRatio = option.animateVelocityRatio;
-	        }
-
-	        //控件初始化
-	        this._sliderInit();
+	        //初始化
+	        this._init();
 	    }
 
-	    //根据传入的参数做一次初始化
+	    _createClass(JSlider, [{
+	        key: '_init',
+	        value: function _init() {
+	            this._children = this.element.querySelectorAll('.page');
+	            //如果子元素个数少于2，不需要执行滚动逻辑
+	            if (this._children.length < 2) {
+	                return;
+	            }
 
-
-	    _createClass(Slider, [{
-	        key: '_sliderInit',
-	        value: function _sliderInit() {
-	            //响应系统逻辑优先初始化
-	            this._responder();
-
-	            //循环滚动逻辑
-	            if (true == this.loop) {
+	            //如果是一个循环列表，那么要重新生成DOM树
+	            if (this.loop) {
 	                var tmpFirstNode = this._children.item(0).cloneNode(true),
 	                    tmpLastNode = this._children.item(this._children.length - 1).cloneNode(true);
-	                this._totalPage += 2;
 	                this.element.insertBefore(tmpLastNode, this._children.item(0));
 	                this.element.appendChild(tmpFirstNode);
-	                this._render(-this._pageSize);
 	            }
-	            //自动滚动逻辑
-	            this._startAutoSlide();
+
+	            // 初始化范围数组，如果有循环列表，则考虑重新生成位置
+	            this._createRanges();
+	            this.loop && this._render(this._range[1]);
+
+	            //设置默认状态自动轮播逻辑
+	            this._setState(3);
+	            //响应系统
+	            this._responder();
 	        }
 
-	        //初始化响应参数
+	        //刷新range
 
 	    }, {
-	        key: '_responderInit',
-	        value: function _responderInit() {
-	            this._response = {
-	                inResponse: false, //是否正在响应状态
-	                position: null, //响应时的位置
-	                velocity: 0 //移动速度
+	        key: '_createRanges',
+	        value: function _createRanges() {
+	            var sum = 0;
+	            this._range = [];
+	            this._children = this.element.querySelectorAll('.page');
+	            this._range.push(sum);
+	            for (var i = 0; i < this._children.length; i++) {
+	                var rect = this._children.item(i).getBoundingClientRect();
+	                var size = rect.width;
+	                if (this.orientation == 'vertical') {
+	                    size = rect.height;
+	                }
+	                sum += size;
+	                this._range.push(sum);
+	            }
+	        }
+	    }, {
+	        key: '_getRange',
+	        value: function _getRange(position) {
+	            for (var i = 0; i < this._range.length; i++) {
+	                //刚好命中临界点，作用范围为一个点
+	                if (position == this._range[i]) {
+	                    return [this._range[i], this._range[i]];
+	                }
+	                //能走到这一步，说明i>0成立
+	                if (position < this._range[i]) {
+	                    return [this._range[i - 1], this._range[i]];
+	                }
+	            }
+	        }
+
+	        //管理状态切换
+
+	    }, {
+	        key: '_setState',
+	        value: function _setState(state) {
+	            this._state = state;
+	            //任意状态切换都要停止动画
+	            this._stopAnimation();
+	            if (state == 1) {
+	                this._stopAutoCarousel();
+	            } else if (state == 2) {
+	                this._startInertia();
+	                this._stopAutoCarousel();
+	            } else if (state == 3) {
+	                this._startAutoCarousel();
+	            }
+	        }
+	    }, {
+	        key: '_requestFrame',
+	        value: function _requestFrame() {
+	            return window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame || function (frame) {
+	                return window.setTimeout(frame, 1000 / 60);
 	            };
+	        }
+	    }, {
+	        key: '_startAnimation',
+	        value: function _startAnimation(frame) {
+	            this._animation = true;
+	            this._animate(frame);
+	        }
+	    }, {
+	        key: '_stopAnimation',
+	        value: function _stopAnimation() {
+	            this._animation = false;
+	        }
+	    }, {
+	        key: '_animate',
+	        value: function _animate(frame) {
+	            var _this = this;
+
+	            //是否停止动画
+	            if (!this._animation) {
+	                return;
+	            }
+
+	            this._requestFrame()(function () {
+	                frame();
+	                _this._animate(frame);
+	            });
 	        }
 
 	        //响应跟随系统
@@ -203,9 +273,7 @@
 	    }, {
 	        key: '_responder',
 	        value: function _responder() {
-	            var _this = this;
-
-	            this._responderInit();
+	            var _this2 = this;
 
 	            //检测当前页面所处的模式，鼠标还是触摸
 	            var touchExist = 'ontouchstart' in window;
@@ -213,42 +281,34 @@
 	            //获取当前手指（或鼠标指针）在屏幕位置
 	            var getTouchPosition = function getTouchPosition(e) {
 	                var eventObject = touchExist ? e.touches.item(0) : e;
-	                if (_this.orientation == 'vertical') {
+	                if (_this2.orientation == 'vertical') {
 	                    return eventObject.screenY;
 	                }
 	                return eventObject.screenX;
 	            };
+
+	            //初始位置
+	            var movement = 0;
+
 	            //以下为事件响应器
 	            var start = function start(e) {
-	                if (!_this._response.inResponse) {
-	                    //一旦开始响应，将要移除上一次的动画执行时
-	                    _this._stopAnimation();
-	                    _this._stopAutoSlide();
-
-	                    _this._response.inResponse = true;
-	                    _this._response.position = getTouchPosition(e);
-	                    _this._response.responseTime = Date.now();
+	                if (_this2._state != 1) {
+	                    _this2._setState(1);
+	                    movement = getTouchPosition(e);
 	                }
 	            };
 	            var move = function move(e) {
-	                e.preventDefault();
-	                if (_this._response.inResponse) {
-	                    var tmpMovePosition = getTouchPosition(e);
-	                    var offsetPosition = tmpMovePosition - _this._response.position;
-	                    _this._response.position = tmpMovePosition;
-	                    _this._response.velocity = offsetPosition;
-
-	                    _this._follow(offsetPosition);
+	                if (_this2._state == 1) {
+	                    e.preventDefault();
+	                    var tmpMovement = getTouchPosition(e);
+	                    _this2._responseVelocity = -(tmpMovement - movement);
+	                    movement = tmpMovement;
+	                    _this2._follow();
 	                }
 	            };
 	            var end = function end(e) {
-	                if (_this._response.inResponse) {
-	                    var lastVelocity = _this._response.velocity;
-	                    _this._responderInit();
-	                    _this._rebound(lastVelocity);
-
-	                    //为了防止跟随在边缘，强制启动自动轮播
-	                    _this._startAutoSlide();
+	                if (_this2._state == 1) {
+	                    _this2._setState(2);
 	                }
 	            };
 	            var cancel = function cancel(e) {
@@ -264,90 +324,28 @@
 	            this.element.addEventListener(startEvent, start);
 	            doc.addEventListener(moveEvent, move);
 	            doc.addEventListener(endEvent, end);
-	            doc.addEventListener(cancelEvent, cancel);
-	        }
-	    }, {
-	        key: '_requestFrame',
-	        value: function _requestFrame() {
-	            var requestFrame = window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame || function (frame) {
-	                return window.setTimeout(frame, 1000 / 60);
-	            };
-	            return requestFrame;
-	        }
-
-	        //动画逻辑
-
-	    }, {
-	        key: '_animate',
-	        value: function _animate(frame) {
-	            var _this2 = this;
-
-	            if (!frame || typeof frame != 'function') {
-	                return;
+	            if (touchExist) {
+	                doc.addEventListener(cancelEvent, cancel);
 	            }
-
-	            if (this._isAnimating === false) {
-	                return;
-	            }
-
-	            this._requestFrame()(function () {
-	                frame();
-	                _this2._animate(frame);
-	            });
 	        }
-
-	        //开始执行动画
-
-	    }, {
-	        key: '_startAnimation',
-	        value: function _startAnimation(frame) {
-	            this._isAnimating = true;
-	            this._animate(frame);
-	        }
-
-	        //中断执行动画
-
-	    }, {
-	        key: '_stopAnimation',
-	        value: function _stopAnimation() {
-	            this._isAnimating = false;
-	        }
-
-	        //执行最终的位移渲染
-
 	    }, {
 	        key: '_render',
-	        value: function _render(newPosition) {
+	        value: function _render(newPosition, callback) {
 	            var _this3 = this;
 
+	            //位置没变，不执行渲染
 	            if (newPosition == this._position) {
 	                return;
 	            }
 
-	            //在这里更新位置和当前页码
 	            this._position = newPosition;
-
-	            //判断是否触发了循环滚动
-	            if (this.loop == true) {
-	                if (this._position <= (1 - this._totalPage) * this._pageSize) {
-	                    this._position = -this._pageSize;
+	            if (this.loop) {
+	                if (this._position == this._range[0]) {
+	                    this._position = this._range[this._range.length - 3];
 	                }
-	                if (this._position >= 0) {
-	                    this._position = (2 - this._totalPage) * this._pageSize;
+	                if (this._position == this._range[this._range.length - 2]) {
+	                    this._position = this._range[1];
 	                }
-	            }
-
-	            this._currentPage = parseInt(Math.abs(this._position / this._pageSize)) + 1;
-	            //非跟随状态出现位置整除，则认为触发边界,触发边界要停止动画和自动滚动
-	            if (!this._response.inResponse && this._position % this._pageSize === 0) {
-	                //设置新页载入
-	                this._setOnPageShow();
-
-	                //触发临界值，停止动画和自动轮播
-	                this._stopAutoSlide();
-	                this._requestFrame()(function () {
-	                    _this3._startAutoSlide();
-	                });
 	            }
 
 	            var translate3d = function translate3d(position) {
@@ -356,174 +354,156 @@
 	                    styleName = 'transform';
 	                }
 
-	                var style = 'translate3d(' + position + 'px, 0, 0)';
+	                var style = 'translate3d(-' + position + 'px, 0, 0)';
 	                if (_this3.orientation == 'vertical') {
-	                    style = 'translate3d(0, ' + position + 'px, 0)';
+	                    style = 'translate3d(0, -' + position + 'px, 0)';
 	                }
 	                _this3.element.style[styleName] = style;
 	            };
 
 	            //先执行移动
 	            translate3d(this._position);
+	            //如果有回调，则渲染完成之后执行回调
+	            callback && typeof callback == 'function' && callback();
 	        }
 
-	        //跟随(也就是手指或鼠标拖动)
+	        //跟随逻辑
 
 	    }, {
 	        key: '_follow',
-	        value: function _follow(offsetPosition) {
-	            //临界值处理
-	            var range = [(1 - this._totalPage) * this._pageSize, 0];
-	            var newPosition = this._position + offsetPosition;
+	        value: function _follow() {
+	            var movement = this._responseVelocity;
+	            var range = [this._range[0], this._range[this._range.length - 2]];
+
+	            var newPosition = this._position + movement;
 	            if (newPosition <= range[0]) {
 	                newPosition = range[0];
-	            } else if (newPosition >= range[1]) {
+	            }
+	            if (newPosition >= range[1]) {
 	                newPosition = range[1];
 	            }
+
+	            //刷新
 	            this._render(newPosition);
 	        }
 
-	        //根据位移公式计算加速度
-	        //v : 初始速度
-	        //s : 总位移
-	        //t : 消耗的总时间，这里是帧数
+	        //开始惯性
 
 	    }, {
-	        key: '_getAcceleration',
-	        value: function _getAcceleration(v, s) {
-	            var t = arguments.length <= 2 || arguments[2] === undefined ? 30 : arguments[2];
-
-	            //公式: v*t + a*t*t/2 = s
-	            return (s - v * t) * 2 / (t * t);
-	        }
-
-	        //特定速度下回弹
-
-	    }, {
-	        key: '_rebound',
-	        value: function _rebound() {
+	        key: '_startInertia',
+	        value: function _startInertia() {
 	            var _this4 = this;
 
-	            var velocity = arguments.length <= 0 || arguments[0] === undefined ? 0 : arguments[0];
+	            var velocity = this._responseVelocity;
+	            var range = this._getRange(this._position);
+	            //如果刚好在临界点上，则不执行惯性，直接触发状态3
+	            if (range[0] == range[1]) {
+	                this._setState(3);
+	                return;
+	            }
 
-
-	            var pageRatio = this._position / this._pageSize;
-	            var range = [Math.floor(pageRatio) * this._pageSize, Math.ceil(pageRatio) * this._pageSize];
-	            var displayment = 0;
-	            if (Math.abs(velocity) >= this._thresholdVelocity) {
+	            var displayment = void 0;
+	            //这里是默认状态，可能需要回弹
+	            if (this._position - range[0] > range[1] - this._position) {
+	                displayment = range[1] - this._position;
+	            } else {
+	                displayment = range[0] - this._position;
+	            }
+	            //这里是一冲到底，不需要回弹
+	            if (Math.abs(velocity) > this.reboundCritical) {
 	                if (velocity > 0) {
 	                    displayment = range[1] - this._position;
 	                } else {
 	                    displayment = range[0] - this._position;
 	                }
-	            } else {
-	                //这部分逻辑可选，移除将消灭回弹效果，但会移除一些触发不灵敏的bug
-	                displayment = Math.round(pageRatio) * this._pageSize - this._position;
 	            }
 
-	            //如果位移为0值，则不应该执行任何惯性逻辑
-	            if (displayment === 0) {
-	                return;
-	            }
+	            //计算位移需要运动的帧数
+	            var frame = Math.abs(displayment * this.inertiaFrame / (range[1] - range[0]));
+	            var acceleration = displayment / frame;
 
-	            var duration = Math.abs(displayment / this._pageSize) * this.animationDuration;
-	            var step = displayment / duration;
-
-	            //开始执行动画
+	            //开始动画
 	            this._startAnimation(function () {
-	                step *= _this4.animateVelocityRatio;
-	                var newPosition = _this4._position + step;
-
-	                if (newPosition <= range[0]) {
-	                    newPosition = range[0];
-	                }
-	                if (newPosition >= range[1]) {
-	                    newPosition = range[1];
-	                }
-
-	                _this4._render(newPosition);
+	                _this4._startInertiaAnimation(velocity, acceleration, range);
 	            });
 	        }
-
-	        //一屏滚动完成触发
-
 	    }, {
-	        key: '_setOnPageShow',
-	        value: function _setOnPageShow() {
-	            var trueLength = this._children.length,
-	                page = void 0;
-	            if (this.loop == false) {
-	                page = this._currentPage;
-	            } else if (this._currentPage == trueLength + 2) {
-	                page = 1;
-	            } else if (this._currentPage == 1) {
-	                page = trueLength;
-	            } else {
-	                page = this._currentPage - 1;
-	            }
-	            var target = this.element.children.item(this._currentPage - 1);
-	            this.onPageShow && typeof this.onPageShow == 'function' && this.onPageShow({ page: page, target: target });
-	        }
+	        key: '_startInertiaAnimation',
 
-	        //停止自动滚动
 
-	    }, {
-	        key: '_stopAutoSlide',
-	        value: function _stopAutoSlide() {
-	            this._isAutoSlide = false;
-	            this._isAnimating = false;
-	            window.clearTimeout(this._autoSlideTimer);
-	        }
-	        //开始自动滚动
-
-	    }, {
-	        key: '_startAutoSlide',
-	        value: function _startAutoSlide() {
+	        //惯性动画帧的执行内容
+	        value: function _startInertiaAnimation(velocity, acceleration, range) {
 	            var _this5 = this;
 
-	            if (this.autoSlide && //启用了自动轮播
-	            !this._response.inResponse && //不是在跟随状态
-	            !this._isAutoSlide && //不是在自动轮播状态
-	            !this._isAnimating //不是正在动画
-	            ) {
-	                    (function () {
-	                        _this5._isAutoSlide = true;
-	                        //满足以上条件才可以开始自动轮播
-	                        var velocity = 0,
-	                            displayment = void 0,
-	                            range = void 0;
-	                        if (_this5.autoSlideDirection) {
-	                            displayment = _this5._pageSize;
-	                            range = [(1 - _this5._currentPage) * _this5._pageSize, (2 - _this5._currentPage) * _this5._pageSize];
-	                        } else {
-	                            displayment = -_this5._pageSize;
-	                            range = [-_this5._currentPage * _this5._pageSize, (1 - _this5._currentPage) * _this5._pageSize];
-	                        }
+	            acceleration *= this.inertiaFrameRatio;
+	            velocity += acceleration;
+	            var newPosition = this._position + velocity;
 
-	                        var acceleration = _this5._getAcceleration(velocity, displayment, _this5.animationDuration);
-	                        _this5._autoSlideTimer = window.setTimeout(function () {
-	                            _this5._startAnimation(function () {
-	                                velocity += acceleration;
-	                                var newPosition = _this5._position + velocity;
-	                                if (newPosition <= range[0]) {
-	                                    newPosition = range[0];
-	                                }
-	                                if (newPosition >= range[1]) {
-	                                    newPosition = range[1];
-	                                }
+	            //渲染回调逻辑
+	            var callback = null,
+	                stateCallback = function stateCallback() {
+	                return _this5._setState(3);
+	            };
 
-	                                _this5._render(newPosition);
-	                            });
-	                        }, _this5.autoSlideInreval);
-	                    })();
-	                }
+	            //下面两个临界状态触发，实际上要先渲染，渲染完成之后执行状态跳转
+	            if (newPosition <= range[0]) {
+	                newPosition = range[0];
+	                callback = stateCallback;
+	            }
+	            if (newPosition >= range[1]) {
+	                newPosition = range[1];
+	                callback = stateCallback;
+	            }
+
+	            this._render(newPosition, callback);
+	        }
+
+	        //开始自动轮播
+
+	    }, {
+	        key: '_startAutoCarousel',
+	        value: function _startAutoCarousel() {
+	            var _this6 = this;
+
+	            if (this.autoCarousel) {
+	                this._carouselTimer = window.setTimeout(function () {
+	                    var range = null;
+	                    var index = _this6._range.indexOf(_this6._position);
+	                    if (_this6.carouselReverse) {
+	                        range = [_this6._range[index - 1], _this6._range[index]];
+	                    } else {
+	                        range = [_this6._range[index], _this6._range[index + 1]];
+	                    }
+
+	                    //计算自动轮播一屏需要的位移量
+	                    var displayment = range[1] - range[0];
+	                    if (_this6.carouselReverse) {
+	                        displayment *= -1;
+	                    }
+
+	                    var velocity = 0;
+	                    var acceleration = displayment / _this6.inertiaFrame;
+
+	                    //开始执行惯性动画
+	                    _this6._startAnimation(function () {
+	                        _this6._startInertiaAnimation(velocity, acceleration, range);
+	                    });
+	                }, this.autoCarouselInterval);
+	            }
+	        }
+	        //停止自动轮播
+
+	    }, {
+	        key: '_stopAutoCarousel',
+	        value: function _stopAutoCarousel() {
+	            window.clearTimeout(this._carouselTimer);
 	        }
 	    }]);
 
-	    return Slider;
+	    return JSlider;
 	}();
 
-	exports.default = Slider;
+	exports.default = JSlider;
 
 /***/ }
 /******/ ]);

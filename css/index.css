@@ -33,6 +33,7 @@ html, body, main, section {
   font-size: 30px;
   font-weight: bold;
   color: #363636;
-  border: 3px solid brown;
+  border: 5px solid green;
+  border-bottom-color: red;
   padding-top: 200px;
   color: #666; }

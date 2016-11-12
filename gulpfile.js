@@ -38,7 +38,7 @@ var config = {
     },
     //babel配置
     babel: {
-        presets: ["es2015", "react"]
+        presets: ["es2015"]
     }
 };
 
