@@ -18,5 +18,8 @@ new _JSlider2.default({
     autoCarousel: true,
     // carouselReverse: true,
     autoCarouselInterval: 3000,
-    loop: true
+    loop: true,
+    onPageShow: function onPageShow(page) {
+        return console.log(page);
+    }
 });

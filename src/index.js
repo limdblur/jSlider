@@ -12,5 +12,6 @@ new JSlider({
     autoCarousel: true,
     // carouselReverse: true,
     autoCarouselInterval: 3000,
-    loop: true
+    loop: true,
+    onPageShow: (page)=>console.log(page)
 });

@@ -64,7 +64,10 @@
 	    autoCarousel: true,
 	    // carouselReverse: true,
 	    autoCarouselInterval: 3000,
-	    loop: true
+	    loop: true,
+	    onPageShow: function onPageShow(page) {
+	        return console.log(page);
+	    }
 	});
 
 /***/ },
@@ -152,6 +155,13 @@
 	        //轮播启动的计时器，清除将消灭轮播
 	        this._carouselTimer = 0;
 
+	        //一页进行到底时触发事件
+	        //此参数主要是方便处理一些页面载入载出相关的逻辑
+	        this.onPageShow = null;
+	        if (option.onPageShow && typeof option.onPageShow == 'function') {
+	            this.onPageShow = option.onPageShow;
+	        }
+
 	        //初始化
 	        this._init();
 	    }
@@ -228,8 +238,8 @@
 	            if (state == 1) {
 	                this._stopAutoCarousel();
 	            } else if (state == 2) {
-	                this._startInertia();
 	                this._stopAutoCarousel();
+	                this._startInertia();
 	            } else if (state == 3) {
 	                this._startAutoCarousel();
 	            }
@@ -490,6 +500,30 @@
 	                    });
 	                }, this.autoCarouselInterval);
 	            }
+	            //state=3状态会触发参数中的onPageShow回调
+	            this._onPageShow();
+	        }
+	    }, {
+	        key: '_onPageShow',
+	        value: function _onPageShow() {
+	            var page = 0;
+	            for (var i = 0; i < this._range.length; i++) {
+	                if (this._position == this._range[i]) {
+	                    page = i;
+	                    break;
+	                }
+	            }
+	            if (this.loop) {
+	                if (page > 0 && page < this._range.length - 2) {
+	                    page -= 1;
+	                } else if (page == 0) {
+	                    page = this._range.length - 3;
+	                } else if (page == this._range.length - 2) {
+	                    page = 0;
+	                }
+	            }
+
+	            this.onPageShow && typeof this.onPageShow == 'function' && this.onPageShow(page);
 	        }
 	        //停止自动轮播
 
