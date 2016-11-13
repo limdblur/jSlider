@@ -169,16 +169,36 @@ var JSlider = function () {
             }
         }
     }, {
-        key: '_requestFrame',
-        value: function _requestFrame() {
-            return window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame || function (frame) {
-                return window.setTimeout(frame, 1000 / 60);
-            };
-        }
-    }, {
         key: '_startAnimation',
-        value: function _startAnimation(frame) {
+        value: function _startAnimation(velocity, acceleration, range) {
+            var _this = this;
+
             this._animation = true;
+
+            var frame = function frame() {
+                acceleration *= _this.inertiaFrameRatio;
+                // velocity += acceleration;
+                var newPosition = _this._position + velocity + acceleration;
+
+                //渲染回调逻辑
+                var callback = null,
+                    stateCallback = function stateCallback() {
+                    return _this._setState(3);
+                };
+
+                //下面两个临界状态触发，实际上要先渲染，渲染完成之后执行状态跳转
+                if (newPosition <= range[0]) {
+                    newPosition = range[0];
+                    callback = stateCallback;
+                }
+                if (newPosition >= range[1]) {
+                    newPosition = range[1];
+                    callback = stateCallback;
+                }
+
+                _this._render(newPosition, callback);
+            };
+
             this._animate(frame);
         }
     }, {
@@ -189,16 +209,20 @@ var JSlider = function () {
     }, {
         key: '_animate',
         value: function _animate(frame) {
-            var _this = this;
+            var _this2 = this;
 
             //是否停止动画
             if (!this._animation) {
                 return;
             }
 
-            this._requestFrame()(function () {
+            var requestFrame = window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame || function (frame) {
+                return window.setTimeout(frame, 1000 / 60);
+            };
+            //执行动画
+            requestFrame(function () {
                 frame();
-                _this._animate(frame);
+                _this2._animate(frame);
             });
         }
 
@@ -207,7 +231,7 @@ var JSlider = function () {
     }, {
         key: '_responder',
         value: function _responder() {
-            var _this2 = this;
+            var _this3 = this;
 
             //检测当前页面所处的模式，鼠标还是触摸
             var touchExist = 'ontouchstart' in window;
@@ -215,7 +239,7 @@ var JSlider = function () {
             //获取当前手指（或鼠标指针）在屏幕位置
             var getTouchPosition = function getTouchPosition(e) {
                 var eventObject = touchExist ? e.touches.item(0) : e;
-                if (_this2.orientation == 'vertical') {
+                if (_this3.orientation == 'vertical') {
                     return eventObject.screenY;
                 }
                 return eventObject.screenX;
@@ -226,23 +250,23 @@ var JSlider = function () {
 
             //以下为事件响应器
             var start = function start(e) {
-                if (_this2._state != 1) {
-                    _this2._setState(1);
+                if (_this3._state != 1) {
+                    _this3._setState(1);
                     movement = getTouchPosition(e);
                 }
             };
             var move = function move(e) {
-                if (_this2._state == 1) {
+                if (_this3._state == 1) {
                     e.preventDefault();
                     var tmpMovement = getTouchPosition(e);
-                    _this2._responseVelocity = -(tmpMovement - movement);
+                    _this3._responseVelocity = -(tmpMovement - movement);
                     movement = tmpMovement;
-                    _this2._follow();
+                    _this3._follow();
                 }
             };
             var end = function end(e) {
-                if (_this2._state == 1) {
-                    _this2._setState(2);
+                if (_this3._state == 1) {
+                    _this3._setState(2);
                 }
             };
             var cancel = function cancel(e) {
@@ -265,7 +289,7 @@ var JSlider = function () {
     }, {
         key: '_render',
         value: function _render(newPosition, callback) {
-            var _this3 = this;
+            var _this4 = this;
 
             //位置没变，不执行渲染
             if (newPosition == this._position) {
@@ -284,19 +308,20 @@ var JSlider = function () {
 
             var translate3d = function translate3d(position) {
                 var styleName = 'webkitTransform';
-                if ('transform' in _this3.element.style) {
+                if ('transform' in _this4.element.style) {
                     styleName = 'transform';
                 }
 
                 var style = 'translate3d(-' + position + 'px, 0, 0)';
-                if (_this3.orientation == 'vertical') {
+                if (_this4.orientation == 'vertical') {
                     style = 'translate3d(0, -' + position + 'px, 0)';
                 }
-                _this3.element.style[styleName] = style;
+                _this4.element.style[styleName] = style;
             };
 
             //先执行移动
             translate3d(this._position);
+
             //如果有回调，则渲染完成之后执行回调
             callback && typeof callback == 'function' && callback();
         }
@@ -326,8 +351,6 @@ var JSlider = function () {
     }, {
         key: '_startInertia',
         value: function _startInertia() {
-            var _this4 = this;
-
             var velocity = this._responseVelocity;
             var range = this._getRange(this._position);
             //如果刚好在临界点上，则不执行惯性，直接触发状态3
@@ -357,71 +380,38 @@ var JSlider = function () {
             var acceleration = displayment / frame;
 
             //开始动画
-            this._startAnimation(function () {
-                _this4._startInertiaAnimation(velocity, acceleration, range);
-            });
+            this._startAnimation(velocity, acceleration, range);
         }
-    }, {
-        key: '_startInertiaAnimation',
-
-
-        //惯性动画帧的执行内容
-        value: function _startInertiaAnimation(velocity, acceleration, range) {
-            var _this5 = this;
-
-            acceleration *= this.inertiaFrameRatio;
-            velocity += acceleration;
-            var newPosition = this._position + velocity;
-
-            //渲染回调逻辑
-            var callback = null,
-                stateCallback = function stateCallback() {
-                return _this5._setState(3);
-            };
-
-            //下面两个临界状态触发，实际上要先渲染，渲染完成之后执行状态跳转
-            if (newPosition <= range[0]) {
-                newPosition = range[0];
-                callback = stateCallback;
-            }
-            if (newPosition >= range[1]) {
-                newPosition = range[1];
-                callback = stateCallback;
-            }
-
-            this._render(newPosition, callback);
-        }
-
-        //开始自动轮播
-
     }, {
         key: '_startAutoCarousel',
+
+
+        //开始自动轮播
         value: function _startAutoCarousel() {
-            var _this6 = this;
+            var _this5 = this;
 
             if (this.autoCarousel) {
                 this._carouselTimer = window.setTimeout(function () {
                     var range = null;
-                    var index = _this6._range.indexOf(_this6._position);
-                    if (_this6.carouselReverse) {
-                        range = [_this6._range[index - 1], _this6._range[index]];
+                    var index = _this5._range.indexOf(_this5._position);
+                    if (_this5.carouselReverse) {
+                        range = [_this5._range[index - 1], _this5._range[index]];
                     } else {
-                        range = [_this6._range[index], _this6._range[index + 1]];
+                        range = [_this5._range[index], _this5._range[index + 1]];
                     }
 
                     //计算自动轮播一屏需要的位移量
                     var displayment = range[1] - range[0];
-                    if (_this6.carouselReverse) {
+                    if (_this5.carouselReverse) {
                         displayment *= -1;
                     }
 
                     var velocity = 0;
-                    var acceleration = displayment / _this6.inertiaFrame;
+                    var acceleration = displayment / _this5.inertiaFrame;
+                    // console.log(velocity, displayment, this.inertiaFrame, acceleration, range);
 
                     //开始执行惯性动画
-                    _this6._startAnimation(function () {
-                        _this6._startInertiaAnimation(velocity, acceleration, range);
-                    });
+                    _this5._startAnimation(velocity, acceleration, range);
                 }, this.autoCarouselInterval);
             }
             //state=3状态会触发参数中的onPageShow回调

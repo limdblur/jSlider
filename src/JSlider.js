@@ -148,18 +148,31 @@ export default class JSlider {
         }
     }
 
-    _requestFrame(){
-        return  window.requestAnimationFrame ||
-                window.webkitRequestAnimationFrame ||
-                window.mozRequestAnimationFrame ||
-                window.msRequestAnimationFrame ||
-                function(frame){
-                    return window.setTimeout(frame, 1000/60);
-                };
-    }
-
-    _startAnimation(frame){
+    _startAnimation(velocity, acceleration, range){
         this._animation = true;
+
+        let frame = () => {
+            acceleration *= this.inertiaFrameRatio;
+            // velocity += acceleration;
+            let newPosition = this._position + velocity + acceleration;
+
+            //渲染回调逻辑
+            let callback = null,
+                stateCallback = ()=>this._setState(3);
+
+            //下面两个临界状态触发，实际上要先渲染，渲染完成之后执行状态跳转
+            if(newPosition <= range[0]) {
+                newPosition = range[0];
+                callback = stateCallback;
+            }
+            if(newPosition >= range[1]) {
+                newPosition = range[1];
+                callback = stateCallback;
+            }
+
+            this._render(newPosition, callback);
+        }
+
         this._animate(frame);
     }
 
@@ -173,7 +186,15 @@ export default class JSlider {
             return ;
         }
 
-        this._requestFrame()(()=>{
+        let requestFrame =  window.requestAnimationFrame ||
+                            window.webkitRequestAnimationFrame ||
+                            window.mozRequestAnimationFrame ||
+                            window.msRequestAnimationFrame ||
+                            function(frame){
+                                return window.setTimeout(frame, 1000/60);
+                            };
+        //执行动画
+        requestFrame(()=>{
             frame();
             this._animate(frame);
         });
@@ -266,6 +287,7 @@ export default class JSlider {
 
         //先执行移动
         translate3d(this._position);
+
         //如果有回调，则渲染完成之后执行回调
         callback && typeof callback == 'function' && callback();
     }
@@ -319,33 +341,8 @@ export default class JSlider {
         let acceleration = displayment / frame;
 
         //开始动画
-        this._startAnimation(()=>{
-            this._startInertiaAnimation(velocity, acceleration, range);
-        });
+        this._startAnimation(velocity, acceleration, range);
     };
-
-    //惯性动画帧的执行内容
-    _startInertiaAnimation(velocity, acceleration, range){
-        acceleration *= this.inertiaFrameRatio;
-        velocity += acceleration;
-        let newPosition = this._position + velocity;
-
-        //渲染回调逻辑
-        let callback = null,
-            stateCallback = ()=>this._setState(3);
-
-        //下面两个临界状态触发，实际上要先渲染，渲染完成之后执行状态跳转
-        if(newPosition <= range[0]) {
-            newPosition = range[0];
-            callback = stateCallback;
-        }
-        if(newPosition >= range[1]) {
-            newPosition = range[1];
-            callback = stateCallback;
-        }
-
-        this._render(newPosition, callback);
-    }
 
     //开始自动轮播
     _startAutoCarousel(){
@@ -367,11 +364,10 @@ export default class JSlider {
 
                 let velocity = 0;
                 let acceleration = displayment/this.inertiaFrame;
+                // console.log(velocity, displayment, this.inertiaFrame, acceleration, range);
 
                 //开始执行惯性动画
-                this._startAnimation(()=>{
-                    this._startInertiaAnimation(velocity, acceleration, range);
-                });
+                this._startAnimation(velocity, acceleration, range);
 
             }, this.autoCarouselInterval);
         }
