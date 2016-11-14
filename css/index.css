@@ -5,7 +5,7 @@ html {
   -webkit-tap-highlight-color: transparent;
   -webkit-overflow-scrolling: touch; }
 
-body {
+body, #container, section.page {
   height: 100%;
   overflow: hidden; }
 
@@ -13,27 +13,15 @@ html, body, main, section {
   margin: 0;
   padding: 0; }
 
-#container[data-orientation="vertical"] {
-  overflow-y: visible;
-  height: 100%; }
-  #container[data-orientation="vertical"] .page {
-    height: 100%; }
-
-#container[data-orientation="horizontal"] {
-  overflow-x: visible;
-  width: 100%; }
-  #container[data-orientation="horizontal"] .page {
-    width: 100%; }
-
-#container .page {
-  box-sizing: border-box; }
-
-#container .page {
-  text-align: center;
-  font-size: 30px;
-  font-weight: bold;
-  color: #363636;
-  border: 5px solid green;
-  border-bottom-color: red;
-  padding-top: 200px;
-  color: #666; }
+#container {
+  overflow: visible; }
+  #container .page {
+    box-sizing: border-box;
+    text-align: center;
+    font-size: 30px;
+    font-weight: bold;
+    color: #363636;
+    border: 5px solid green;
+    border-bottom-color: red;
+    padding-top: 200px;
+    color: #666; }

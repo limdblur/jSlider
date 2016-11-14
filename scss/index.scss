@@ -4,7 +4,7 @@ html{
     -webkit-tap-highlight-color: transparent;
     -webkit-overflow-scrolling: touch;
 }
-body{
+body,#container,section.page{
     height:100%;
     overflow: hidden;
 }
@@ -14,28 +14,12 @@ html,body,main,section{
     padding:0;
 }
 
-#container {
-    &[data-orientation="vertical"] {
-        overflow-y: visible;
-        height: 100%;
-        .page {
-            height: 100%;
-        }
-    }
-    &[data-orientation="horizontal"] {
-        overflow-x: visible;
-        width: 100%;
-        .page {
-            width: 100%;
-        }
-    }
-
-    .page {
-        box-sizing: border-box;
-    }
+#container{
+    overflow: visible;
 
     //写一些测试样式
     .page {
+        box-sizing: border-box;
         text-align: center;
         font-size: 30px;
         font-weight: bold;

@@ -1,9 +1,9 @@
-import JSlider from './JSlider';
+import jSlider from './jSlider';
 
 //================================
 //=========Test Case Here=========
 //================================
-new JSlider({
+new jSlider({
     element: document.getElementById('container'),
     orientation: 'vertical',
     inertiaFrame: 60,

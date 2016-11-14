@@ -8,7 +8,6 @@
 - carouselReverse：bool 自动轮播方向，分为正向和负向。true为负，false为正，默认`false`。*参数可选*
 - loop：bool 是否支持列表循环，注意autoSlide为true时会自动激活loop为true，默认`false`。*参数可选*
 - onPageShow：fucntion 每一个新页展示时触发。*参数可选*
-
 - inertiaFrame: int 完成动画需要的帧数。*参数可选*
 - inertiaFrameRatio: 动画执行时速度的衰减和增强幅度。*参数可选*
 - reboundCritical: 惯性回弹阈值。*参数可选*
@@ -29,3 +28,4 @@ new JSlider({
     onPageShow: (page)=>console.log(page)
 });
 ```
+

@@ -1,4 +1,4 @@
-export default class JSlider {
+export default class jSlider {
     constructor(option){
         //容器对象，代表轮播对象的父对象
         this.element = null;
@@ -15,7 +15,7 @@ export default class JSlider {
          * 2、惯性状态，手指拖动结束之后惯性回弹
          * 3、自动轮播状态，只有设置了自动轮播才会开启
          */
-        this._state = 0;
+        this._state = jSlider.STATE.INIT;
 
         //当前动画状态
         this._animation = false;
@@ -98,7 +98,7 @@ export default class JSlider {
         this.loop && this._render(this._range[1]);
 
         //设置默认状态自动轮播逻辑
-        this._setState(3);
+        this._setState(jSlider.STATE.CAROUSEL);
         //响应系统
         this._responder();
     }
@@ -138,27 +138,30 @@ export default class JSlider {
         this._state = state;
         //任意状态切换都要停止动画
         this._stopAnimation();
-        if(state == 1){
+        if(state == jSlider.STATE.RESPONDE){
             this._stopAutoCarousel();
-        } else if(state == 2) {
+        } else if(state == jSlider.STATE.INERTIA) {
             this._stopAutoCarousel();
             this._startInertia();
-        } else if(state == 3) {
+        } else if(state == jSlider.STATE.CAROUSEL) {
             this._startAutoCarousel();
+        } else if(state == jSlider.STATE.JUMP) {
+            this._stopAutoCarousel();
         }
     }
 
     _startAnimation(velocity, acceleration, range){
         this._animation = true;
 
+        let newPosition = this._position;
+        //渲染回调逻辑
+        let callback = null,
+            stateCallback = ()=>this._setState(jSlider.STATE.CAROUSEL);
+
         let frame = () => {
             acceleration *= this.inertiaFrameRatio;
             // velocity += acceleration;
-            let newPosition = this._position + velocity + acceleration;
-
-            //渲染回调逻辑
-            let callback = null,
-                stateCallback = ()=>this._setState(3);
+            newPosition += velocity + acceleration;
 
             //下面两个临界状态触发，实际上要先渲染，渲染完成之后执行状态跳转
             if(newPosition <= range[0]) {
@@ -173,31 +176,28 @@ export default class JSlider {
             this._render(newPosition, callback);
         }
 
-        this._animate(frame);
+        let requestFrame =
+            window.requestAnimationFrame ||
+            window.webkitRequestAnimationFrame ||
+            window.mozRequestAnimationFrame ||
+            window.msRequestAnimationFrame ||
+            function(frame){
+                return window.setTimeout(frame, 1000/60);
+            };
+
+        let frameCall = () => {
+            if(!this._animation){
+                return ;
+            }
+            frame();
+            requestFrame(frameCall);
+        }
+
+        requestFrame(frameCall);
     }
 
     _stopAnimation(){
         this._animation = false;
-    }
-
-    _animate(frame){
-        //是否停止动画
-        if(!this._animation){
-            return ;
-        }
-
-        let requestFrame =  window.requestAnimationFrame ||
-                            window.webkitRequestAnimationFrame ||
-                            window.mozRequestAnimationFrame ||
-                            window.msRequestAnimationFrame ||
-                            function(frame){
-                                return window.setTimeout(frame, 1000/60);
-                            };
-        //执行动画
-        requestFrame(()=>{
-            frame();
-            this._animate(frame);
-        });
     }
 
     //响应跟随系统
@@ -219,13 +219,13 @@ export default class JSlider {
 
         //以下为事件响应器
         let start = (e)=>{
-            if(this._state != 1){
-                this._setState(1);
+            if(this._state != jSlider.STATE.INIT){
+                this._setState(jSlider.STATE.INIT);
                 movement = getTouchPosition(e);
             }
         };
         let move = (e)=>{
-            if(this._state == 1){
+            if(this._state == jSlider.STATE.INIT){
                 e.preventDefault();
                 let tmpMovement = getTouchPosition(e);
                 this._responseVelocity = -(tmpMovement - movement);
@@ -234,8 +234,9 @@ export default class JSlider {
             }
         };
         let end = (e) => {
-            if(this._state == 1){
-                this._setState(2);
+            if(this._state == jSlider.STATE.INIT){
+                this._setState(jSlider.STATE.INERTIA);
+                this._responseVelocity = 0;
             }
         };
         let cancel = (e) => end(e);
@@ -249,9 +250,7 @@ export default class JSlider {
         this.element.addEventListener(startEvent, start);
         doc.addEventListener(moveEvent, move);
         doc.addEventListener(endEvent, end);
-        if(touchExist) {
-            doc.addEventListener(cancelEvent, cancel);
-        }
+        touchExist && doc.addEventListener(cancelEvent, cancel);
 
     }
 
@@ -316,7 +315,7 @@ export default class JSlider {
         let range = this._getRange(this._position);
         //如果刚好在临界点上，则不执行惯性，直接触发状态3
         if(range[0] == range[1]) {
-            this._setState(3);
+            this._setState(jSlider.STATE.CAROUSEL);
             return ;
         }
 
@@ -348,32 +347,61 @@ export default class JSlider {
     _startAutoCarousel(){
         if(this.autoCarousel){
             this._carouselTimer = window.setTimeout(()=>{
-                let range = null;
-                let index = this._range.indexOf(this._position);
-                if(this.carouselReverse) {
-                    range = [this._range[index - 1], this._range[index]];
-                } else {
-                    range = [this._range[index], this._range[index + 1]];
-                }
-
-                //计算自动轮播一屏需要的位移量
-                let displayment = range[1] - range[0];
-                if(this.carouselReverse) {
-                    displayment *= -1;
-                }
-
-                let velocity = 0;
-                let acceleration = displayment/this.inertiaFrame;
-                // console.log(velocity, displayment, this.inertiaFrame, acceleration, range);
-
-                //开始执行惯性动画
-                this._startAnimation(velocity, acceleration, range);
-
+                this._flipOver(this.carouselReverse);
             }, this.autoCarouselInterval);
         }
         //state=3状态会触发参数中的onPageShow回调
         this._onPageShow();
     }
+
+
+    //停止自动轮播
+    _stopAutoCarousel(){
+        window.clearTimeout(this._carouselTimer);
+    }
+
+    /**
+     * 翻页逻辑
+     * @param reverse 翻页方向 true代表反向
+     * @private
+     */
+    _flipOver(reverse = false){
+
+        let range = null;
+        let index = this._range.indexOf(this._position);
+        if(reverse) {
+            range = [this._range[index - 1], this._range[index]];
+        } else {
+            range = [this._range[index], this._range[index + 1]];
+        }
+
+        //计算自动轮播一屏需要的位移量
+        let displayment = range[1] - range[0];
+        reverse && (displayment *= -1);
+
+        let velocity = 0;
+        let acceleration = displayment/this.inertiaFrame;
+
+        //开始执行惯性动画
+        this._startAnimation(velocity, acceleration, range);
+    }
+
+    /**
+     * 被动触发翻页
+     * @param reverse bool true反向|false正向
+     * @private
+     */
+    jump(reverse = false){
+        if(this._range.indexOf(this._position) == -1) {
+            return ;
+        }
+        this._flipOver(reverse);
+    }
+
+    /**
+     * 一个新的完整页面展示成功时显示
+     * @private
+     */
     _onPageShow(){
         let page = 0;
         for(let i = 0; i < this._range.length; i++){
@@ -397,9 +425,14 @@ export default class JSlider {
         this.onPageShow(page);
 
     }
-    //停止自动轮播
-    _stopAutoCarousel(){
-        window.clearTimeout(this._carouselTimer);
-    }
 
 }
+
+//状态变量定义
+jSlider.STATE = {
+    INIT: 0, //初始状态
+    RESPONDE: 1, //手势响应状态
+    INERTIA: 2, //惯性运动状态
+    CAROUSEL: 3, //轮播状态
+    JUMP: 4 //受到触发翻页状态
+};

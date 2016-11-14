@@ -46,16 +46,16 @@
 
 	'use strict';
 
-	var _JSlider = __webpack_require__(1);
+	var _jSlider = __webpack_require__(1);
 
-	var _JSlider2 = _interopRequireDefault(_JSlider);
+	var _jSlider2 = _interopRequireDefault(_jSlider);
 
 	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 	//================================
 	//=========Test Case Here=========
 	//================================
-	new _JSlider2.default({
+	new _jSlider2.default({
 	    element: document.getElementById('container'),
 	    orientation: 'vertical',
 	    inertiaFrame: 60,
@@ -84,9 +84,9 @@
 
 	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-	var JSlider = function () {
-	    function JSlider(option) {
-	        _classCallCheck(this, JSlider);
+	var jSlider = function () {
+	    function jSlider(option) {
+	        _classCallCheck(this, jSlider);
 
 	        //容器对象，代表轮播对象的父对象
 	        this.element = null;
@@ -103,7 +103,7 @@
 	         * 2、惯性状态，手指拖动结束之后惯性回弹
 	         * 3、自动轮播状态，只有设置了自动轮播才会开启
 	         */
-	        this._state = 0;
+	        this._state = jSlider.STATE.INIT;
 
 	        //当前动画状态
 	        this._animation = false;
@@ -166,7 +166,7 @@
 	        this._init();
 	    }
 
-	    _createClass(JSlider, [{
+	    _createClass(jSlider, [{
 	        key: '_init',
 	        value: function _init() {
 	            this._children = this.element.querySelectorAll('.page');
@@ -188,7 +188,7 @@
 	            this.loop && this._render(this._range[1]);
 
 	            //设置默认状态自动轮播逻辑
-	            this._setState(3);
+	            this._setState(jSlider.STATE.CAROUSEL);
 	            //响应系统
 	            this._responder();
 	        }
@@ -235,13 +235,15 @@
 	            this._state = state;
 	            //任意状态切换都要停止动画
 	            this._stopAnimation();
-	            if (state == 1) {
+	            if (state == jSlider.STATE.RESPONDE) {
 	                this._stopAutoCarousel();
-	            } else if (state == 2) {
+	            } else if (state == jSlider.STATE.INERTIA) {
 	                this._stopAutoCarousel();
 	                this._startInertia();
-	            } else if (state == 3) {
+	            } else if (state == jSlider.STATE.CAROUSEL) {
 	                this._startAutoCarousel();
+	            } else if (state == jSlider.STATE.JUMP) {
+	                this._stopAutoCarousel();
 	            }
 	        }
 	    }, {
@@ -251,16 +253,17 @@
 
 	            this._animation = true;
 
+	            var newPosition = this._position;
+	            //渲染回调逻辑
+	            var callback = null,
+	                stateCallback = function stateCallback() {
+	                return _this._setState(jSlider.STATE.CAROUSEL);
+	            };
+
 	            var frame = function frame() {
 	                acceleration *= _this.inertiaFrameRatio;
 	                // velocity += acceleration;
-	                var newPosition = _this._position + velocity + acceleration;
-
-	                //渲染回调逻辑
-	                var callback = null,
-	                    stateCallback = function stateCallback() {
-	                    return _this._setState(3);
-	                };
+	                newPosition += velocity + acceleration;
 
 	                //下面两个临界状态触发，实际上要先渲染，渲染完成之后执行状态跳转
 	                if (newPosition <= range[0]) {
@@ -275,31 +278,24 @@
 	                _this._render(newPosition, callback);
 	            };
 
-	            this._animate(frame);
+	            var requestFrame = window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame || function (frame) {
+	                return window.setTimeout(frame, 1000 / 60);
+	            };
+
+	            var frameCall = function frameCall() {
+	                if (!_this._animation) {
+	                    return;
+	                }
+	                frame();
+	                requestFrame(frameCall);
+	            };
+
+	            requestFrame(frameCall);
 	        }
 	    }, {
 	        key: '_stopAnimation',
 	        value: function _stopAnimation() {
 	            this._animation = false;
-	        }
-	    }, {
-	        key: '_animate',
-	        value: function _animate(frame) {
-	            var _this2 = this;
-
-	            //是否停止动画
-	            if (!this._animation) {
-	                return;
-	            }
-
-	            var requestFrame = window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame || function (frame) {
-	                return window.setTimeout(frame, 1000 / 60);
-	            };
-	            //执行动画
-	            requestFrame(function () {
-	                frame();
-	                _this2._animate(frame);
-	            });
 	        }
 
 	        //响应跟随系统
@@ -307,7 +303,7 @@
 	    }, {
 	        key: '_responder',
 	        value: function _responder() {
-	            var _this3 = this;
+	            var _this2 = this;
 
 	            //检测当前页面所处的模式，鼠标还是触摸
 	            var touchExist = 'ontouchstart' in window;
@@ -315,7 +311,7 @@
 	            //获取当前手指（或鼠标指针）在屏幕位置
 	            var getTouchPosition = function getTouchPosition(e) {
 	                var eventObject = touchExist ? e.touches.item(0) : e;
-	                if (_this3.orientation == 'vertical') {
+	                if (_this2.orientation == 'vertical') {
 	                    return eventObject.screenY;
 	                }
 	                return eventObject.screenX;
@@ -326,23 +322,24 @@
 
 	            //以下为事件响应器
 	            var start = function start(e) {
-	                if (_this3._state != 1) {
-	                    _this3._setState(1);
+	                if (_this2._state != jSlider.STATE.INIT) {
+	                    _this2._setState(jSlider.STATE.INIT);
 	                    movement = getTouchPosition(e);
 	                }
 	            };
 	            var move = function move(e) {
-	                if (_this3._state == 1) {
+	                if (_this2._state == jSlider.STATE.INIT) {
 	                    e.preventDefault();
 	                    var tmpMovement = getTouchPosition(e);
-	                    _this3._responseVelocity = -(tmpMovement - movement);
+	                    _this2._responseVelocity = -(tmpMovement - movement);
 	                    movement = tmpMovement;
-	                    _this3._follow();
+	                    _this2._follow();
 	                }
 	            };
 	            var end = function end(e) {
-	                if (_this3._state == 1) {
-	                    _this3._setState(2);
+	                if (_this2._state == jSlider.STATE.INIT) {
+	                    _this2._setState(jSlider.STATE.INERTIA);
+	                    _this2._responseVelocity = 0;
 	                }
 	            };
 	            var cancel = function cancel(e) {
@@ -358,14 +355,12 @@
 	            this.element.addEventListener(startEvent, start);
 	            doc.addEventListener(moveEvent, move);
 	            doc.addEventListener(endEvent, end);
-	            if (touchExist) {
-	                doc.addEventListener(cancelEvent, cancel);
-	            }
+	            touchExist && doc.addEventListener(cancelEvent, cancel);
 	        }
 	    }, {
 	        key: '_render',
 	        value: function _render(newPosition, callback) {
-	            var _this4 = this;
+	            var _this3 = this;
 
 	            //位置没变，不执行渲染
 	            if (newPosition == this._position) {
@@ -384,15 +379,15 @@
 
 	            var translate3d = function translate3d(position) {
 	                var styleName = 'webkitTransform';
-	                if ('transform' in _this4.element.style) {
+	                if ('transform' in _this3.element.style) {
 	                    styleName = 'transform';
 	                }
 
 	                var style = 'translate3d(-' + position + 'px, 0, 0)';
-	                if (_this4.orientation == 'vertical') {
+	                if (_this3.orientation == 'vertical') {
 	                    style = 'translate3d(0, -' + position + 'px, 0)';
 	                }
-	                _this4.element.style[styleName] = style;
+	                _this3.element.style[styleName] = style;
 	            };
 
 	            //先执行移动
@@ -431,7 +426,7 @@
 	            var range = this._getRange(this._position);
 	            //如果刚好在临界点上，则不执行惯性，直接触发状态3
 	            if (range[0] == range[1]) {
-	                this._setState(3);
+	                this._setState(jSlider.STATE.CAROUSEL);
 	                return;
 	            }
 
@@ -464,35 +459,78 @@
 
 	        //开始自动轮播
 	        value: function _startAutoCarousel() {
-	            var _this5 = this;
+	            var _this4 = this;
 
 	            if (this.autoCarousel) {
 	                this._carouselTimer = window.setTimeout(function () {
-	                    var range = null;
-	                    var index = _this5._range.indexOf(_this5._position);
-	                    if (_this5.carouselReverse) {
-	                        range = [_this5._range[index - 1], _this5._range[index]];
-	                    } else {
-	                        range = [_this5._range[index], _this5._range[index + 1]];
-	                    }
-
-	                    //计算自动轮播一屏需要的位移量
-	                    var displayment = range[1] - range[0];
-	                    if (_this5.carouselReverse) {
-	                        displayment *= -1;
-	                    }
-
-	                    var velocity = 0;
-	                    var acceleration = displayment / _this5.inertiaFrame;
-	                    // console.log(velocity, displayment, this.inertiaFrame, acceleration, range);
-
-	                    //开始执行惯性动画
-	                    _this5._startAnimation(velocity, acceleration, range);
+	                    _this4._flipOver(_this4.carouselReverse);
 	                }, this.autoCarouselInterval);
 	            }
 	            //state=3状态会触发参数中的onPageShow回调
 	            this._onPageShow();
 	        }
+
+	        //停止自动轮播
+
+	    }, {
+	        key: '_stopAutoCarousel',
+	        value: function _stopAutoCarousel() {
+	            window.clearTimeout(this._carouselTimer);
+	        }
+
+	        /**
+	         * 翻页逻辑
+	         * @param reverse 翻页方向 true代表反向
+	         * @private
+	         */
+
+	    }, {
+	        key: '_flipOver',
+	        value: function _flipOver() {
+	            var reverse = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
+
+
+	            var range = null;
+	            var index = this._range.indexOf(this._position);
+	            if (reverse) {
+	                range = [this._range[index - 1], this._range[index]];
+	            } else {
+	                range = [this._range[index], this._range[index + 1]];
+	            }
+
+	            //计算自动轮播一屏需要的位移量
+	            var displayment = range[1] - range[0];
+	            reverse && (displayment *= -1);
+
+	            var velocity = 0;
+	            var acceleration = displayment / this.inertiaFrame;
+
+	            //开始执行惯性动画
+	            this._startAnimation(velocity, acceleration, range);
+	        }
+
+	        /**
+	         * 被动触发翻页
+	         * @param reverse bool true反向|false正向
+	         * @private
+	         */
+
+	    }, {
+	        key: 'jump',
+	        value: function jump() {
+	            var reverse = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
+
+	            if (this._range.indexOf(this._position) == -1) {
+	                return;
+	            }
+	            this._flipOver(reverse);
+	        }
+
+	        /**
+	         * 一个新的完整页面展示成功时显示
+	         * @private
+	         */
+
 	    }, {
 	        key: '_onPageShow',
 	        value: function _onPageShow() {
@@ -515,19 +553,22 @@
 
 	            this.onPageShow && typeof this.onPageShow == 'function' && this.onPageShow(page);
 	        }
-	        //停止自动轮播
-
-	    }, {
-	        key: '_stopAutoCarousel',
-	        value: function _stopAutoCarousel() {
-	            window.clearTimeout(this._carouselTimer);
-	        }
 	    }]);
 
-	    return JSlider;
+	    return jSlider;
 	}();
 
-	exports.default = JSlider;
+	//状态变量定义
+
+
+	exports.default = jSlider;
+	jSlider.STATE = {
+	    INIT: 0, //初始状态
+	    RESPONDE: 1, //手势响应状态
+	    INERTIA: 2, //惯性运动状态
+	    CAROUSEL: 3, //轮播状态
+	    JUMP: 4 //受到触发翻页状态
+	};
 
 /***/ }
 /******/ ]);
