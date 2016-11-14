@@ -12,8 +12,8 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 new _jSlider2.default({
     element: document.getElementById('container'),
     orientation: 'vertical',
-    inertiaFrame: 60,
-    inertiaFrameRatio: 1.03,
+    // inertiaFrame: 60,
+    // inertiaFrameRatio: 1.03,
     reboundCritical: 2,
     autoCarousel: true,
     // carouselReverse: true,
